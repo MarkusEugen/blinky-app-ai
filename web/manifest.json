@@ -1,0 +1,12 @@
+{
+    "name": "BlinkyApp",
+    "short_name": "BlinkyApp",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#0D0D0D",
+    "theme_color": "#7C6BFF",
+    "description": "BlinkyApp LED lighting control prototype",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": []
+}
