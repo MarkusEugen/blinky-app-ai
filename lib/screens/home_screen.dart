@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/lighting_provider.dart';
+import '../widgets/connection_status_bar.dart';
 import 'brightness_screen.dart';
-import 'color_screen.dart';
-import 'effects_screen.dart';
+import 'custom_effects_screen.dart';
+import 'devices_screen.dart';
+import 'presets_screen.dart';
 
 class HomeScreen extends ConsumerStatefulWidget {
   const HomeScreen({super.key});
@@ -16,12 +18,6 @@ class HomeScreen extends ConsumerStatefulWidget {
 class _HomeScreenState extends ConsumerState<HomeScreen> {
   int _currentIndex = 0;
 
-  static const _screens = [
-    ColorScreen(),
-    EffectsScreen(),
-    BrightnessScreen(),
-  ];
-
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(lightingProvider);
@@ -30,25 +26,41 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            const Text('BlinkyApp'),
+            const Text('LumiBand App'),
             const SizedBox(width: 12),
-            // LED dot showing current color at current brightness
             _LedDot(color: state.displayColor),
           ],
         ),
       ),
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
+      body: Column(
+        children: [
+          const ConnectionStatusBar(),
+          Expanded(
+            child: IndexedStack(
+              index: _currentIndex,
+              children: const [
+                DevicesScreen(),
+                PresetsScreen(),
+                CustomEffectsScreen(),
+                BrightnessScreen(),
+              ],
+            ),
+          ),
+        ],
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _currentIndex,
         onDestinationSelected: (i) => setState(() => _currentIndex = i),
         destinations: const [
           NavigationDestination(
-            icon: Icon(Icons.palette_outlined),
-            selectedIcon: Icon(Icons.palette),
-            label: 'Color',
+            icon: Icon(Icons.bluetooth_outlined),
+            selectedIcon: Icon(Icons.bluetooth),
+            label: 'Devices',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.tune_outlined),
+            selectedIcon: Icon(Icons.tune),
+            label: 'Presets',
           ),
           NavigationDestination(
             icon: Icon(Icons.auto_awesome_outlined),

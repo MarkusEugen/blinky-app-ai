@@ -15,7 +15,7 @@ class BrightnessScreen extends ConsumerWidget {
     final percent = (state.brightness * 100).round();
     final primary = Theme.of(context).colorScheme.primary;
 
-    return Padding(
+    return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -79,7 +79,7 @@ class BrightnessScreen extends ConsumerWidget {
               Expanded(
                 child: Slider(
                   value: state.brightness,
-                  min: 0.0,
+                  min: 0.1,
                   max: 1.0,
                   onChanged: notifier.setBrightness,
                 ),
@@ -98,7 +98,7 @@ class BrightnessScreen extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              for (final pct in [0, 25, 50, 75, 100])
+              for (final pct in [10, 25, 50, 75, 100])
                 _QuickButton(
                   label: '$pct%',
                   isActive: percent == pct,

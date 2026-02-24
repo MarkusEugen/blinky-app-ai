@@ -54,7 +54,7 @@ class LightingNotifier extends Notifier<LightingState> {
   }
 
   void setBrightness(double value) {
-    state = state.copyWith(brightness: value.clamp(0.0, 1.0));
+    state = state.copyWith(brightness: value.clamp(0.1, 1.0));
   }
 
   void activateEffect(String name) {

@@ -9,7 +9,7 @@ class BlinkyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'BlinkyApp',
+      title: 'LumiBand App',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark(),
       home: const HomeScreen(),
