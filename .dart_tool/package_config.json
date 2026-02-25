@@ -56,6 +56,12 @@
       "languageVersion": "3.2"
     },
     {
+      "name": "flutter_blue_plus",
+      "rootUri": "file:///Users/MEL/.pub-cache/hosted/pub.dev/flutter_blue_plus-1.34.5",
+      "packageUri": "lib/",
+      "languageVersion": "2.15"
+    },
+    {
       "name": "flutter_colorpicker",
       "rootUri": "file:///Users/MEL/.pub-cache/hosted/pub.dev/flutter_colorpicker-1.1.0",
       "packageUri": "lib/",
@@ -266,7 +272,7 @@
       "languageVersion": "3.2"
     }
   ],
-  "generated": "2026-02-24T16:20:37.215923Z",
+  "generated": "2026-02-25T07:58:53.507210Z",
   "generator": "pub",
   "generatorVersion": "3.2.5"
 }
