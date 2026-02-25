@@ -160,19 +160,15 @@ class BleService {
     await _brightChar?.write([v], withoutResponse: false);
   }
 
-  /// Tell the device to play a previously uploaded effect slot (0–7).
-  Future<void> activateEffect(int slot) async {
-    await _cmdChar?.write([0x01, slot], withoutResponse: false);
-  }
-
-  /// Activate a built-in preset by index.
+  /// Activate a built-in mode by index (0 = Classic … 4 = Dim).
   Future<void> activatePreset(int index) async {
     await _cmdChar?.write([0x02, index], withoutResponse: false);
   }
 
-  /// Return to solid-colour display.
-  Future<void> setSolidMode() async {
-    await _cmdChar?.write([0x03, 0x00], withoutResponse: false);
+  /// Activate Custom mode and tell the Arduino how many uploaded
+  /// effect slots to cycle through.
+  Future<void> activateCustomMode(int count) async {
+    await _cmdChar?.write([0x02, 5, count], withoutResponse: false);
   }
 
   // ── Effect upload ─────────────────────────────────────────────────────────

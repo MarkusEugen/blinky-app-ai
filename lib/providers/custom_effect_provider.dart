@@ -165,8 +165,8 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
       for (int i = 0; i < selected.length; i++) {
         await ble.uploadEffect(i, selected[i].data);
       }
-      // Activate the first uploaded slot.
-      await ble.activateEffect(0);
+      // Tell the Arduino to enter Custom mode and cycle through the uploaded slots.
+      await ble.activateCustomMode(selected.length);
       ref.read(modeProvider.notifier).setCustomEffectsActive();
     } catch (_) {
       state = state.copyWith(isUploading: false);
