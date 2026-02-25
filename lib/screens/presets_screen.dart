@@ -2,20 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/preset.dart';
+import '../providers/device_provider.dart';
 import '../providers/preset_provider.dart';
 
 class PresetsScreen extends ConsumerWidget {
-  const PresetsScreen({super.key});
+  /// Called when the user taps the Custom Effects row.
+  final VoidCallback onShowEffects;
+
+  const PresetsScreen({super.key, required this.onShowEffects});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final state = ref.watch(presetProvider);
-    final notifier = ref.read(presetProvider.notifier);
+    final modeState = ref.watch(modeProvider);
+    final deviceState = ref.watch(deviceProvider);
+    final notifier = ref.read(modeProvider.notifier);
 
-    final canUpload =
-        state.selectedId != null &&
-        state.selectedId != state.loadedId &&
-        !state.isUploading;
+    final isConnected = deviceState.connectedDevice != null;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -26,11 +28,13 @@ class PresetsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Presets',
+              Text('Mode',
                   style: Theme.of(context).textTheme.headlineMedium),
               const SizedBox(height: 4),
               Text(
-                'Select a preset and upload it to the band',
+                isConnected
+                    ? 'Tap a mode to activate it on your band'
+                    : 'Connect to a device to control the mode',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
               const SizedBox(height: 20),
@@ -38,33 +42,28 @@ class PresetsScreen extends ConsumerWidget {
           ),
         ),
 
-        // ── Preset list ─────────────────────────────────────────
+        // ── Mode list ───────────────────────────────────────────
         Expanded(
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-            itemCount: kPresets.length,
+            itemCount: kModes.length,
             separatorBuilder: (_, __) => const SizedBox(height: 10),
             itemBuilder: (context, i) {
-              final preset = kPresets[i];
-              final isSelected = state.selectedId == preset.id;
-              final isLoaded = state.loadedId == preset.id;
-              return _PresetCard(
-                preset: preset,
-                isSelected: isSelected,
-                isLoaded: isLoaded,
-                onTap: () => notifier.select(preset.id),
+              final mode = kModes[i];
+              // Custom Effects row is always enabled so the user can always
+              // create/edit effects even without a BLE connection.
+              final rowEnabled = isConnected || mode.isCustomEffects;
+              return _ModeCard(
+                mode: mode,
+                isActive: modeState.activeId == mode.id,
+                isEnabled: rowEnabled,
+                onTap: rowEnabled
+                    ? (mode.isCustomEffects
+                        ? onShowEffects
+                        : () => notifier.activate(mode))
+                    : null,
               );
             },
-          ),
-        ),
-
-        // ── Upload button ───────────────────────────────────────
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-          child: _UploadButton(
-            canUpload: canUpload,
-            isUploading: state.isUploading,
-            onUpload: notifier.upload,
           ),
         ),
       ],
@@ -72,18 +71,18 @@ class PresetsScreen extends ConsumerWidget {
   }
 }
 
-// ─── Preset card ──────────────────────────────────────────────────────────
+// ─── Mode card ────────────────────────────────────────────────────────────
 
-class _PresetCard extends StatelessWidget {
-  final Preset preset;
-  final bool isSelected;
-  final bool isLoaded;
-  final VoidCallback onTap;
+class _ModeCard extends StatelessWidget {
+  final AppMode mode;
+  final bool isActive;
+  final bool isEnabled;
+  final VoidCallback? onTap;
 
-  const _PresetCard({
-    required this.preset,
-    required this.isSelected,
-    required this.isLoaded,
+  const _ModeCard({
+    required this.mode,
+    required this.isActive,
+    required this.isEnabled,
     required this.onTap,
   });
 
@@ -92,91 +91,88 @@ class _PresetCard extends StatelessWidget {
     final primary = Theme.of(context).colorScheme.primary;
     final surface = Theme.of(context).colorScheme.surface;
 
-    Color borderColor;
-    Color bgColor;
-    if (isSelected) {
-      borderColor = primary;
-      bgColor = primary.withOpacity(0.12);
-    } else if (isLoaded) {
-      borderColor = const Color(0xFF4CAF50).withOpacity(0.5);
-      bgColor = const Color(0xFF4CAF50).withOpacity(0.06);
-    } else {
-      borderColor = Colors.white.withOpacity(0.08);
-      bgColor = surface;
-    }
+    final borderColor = isActive
+        ? primary
+        : Colors.white.withOpacity(0.08);
+    final bgColor = isActive
+        ? primary.withOpacity(0.12)
+        : surface;
 
-    return AnimatedContainer(
+    return AnimatedOpacity(
+      opacity: isEnabled ? 1.0 : 0.4,
       duration: const Duration(milliseconds: 200),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: borderColor, width: isSelected ? 1.5 : 1),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        splashColor: primary.withOpacity(0.1),
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Icon
-              Text(preset.icon, style: const TextStyle(fontSize: 32)),
-              const SizedBox(width: 16),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: borderColor, width: isActive ? 1.5 : 1),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(16),
+          splashColor: primary.withOpacity(0.1),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                // Icon
+                Text(mode.icon, style: const TextStyle(fontSize: 32)),
+                const SizedBox(width: 16),
 
-              // Name + description
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      preset.name,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: isSelected || isLoaded
-                            ? FontWeight.w700
-                            : FontWeight.w500,
-                        color: isSelected
-                            ? Colors.white
-                            : isLoaded
-                                ? Colors.white
-                                : Colors.white70,
+                // Name + description
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        mode.name,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: isActive
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: Colors.white,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      preset.description,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.45),
+                      const SizedBox(height: 2),
+                      Text(
+                        mode.description,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.white.withOpacity(0.45),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    // Color swatches
-                    _ColorSwatches(colors: preset.colors),
-                  ],
-                ),
-              ),
-
-              const SizedBox(width: 12),
-
-              // Right badge
-              if (isLoaded && !isSelected)
-                _LoadedBadge()
-              else if (isSelected)
-                Container(
-                  width: 26,
-                  height: 26,
-                  decoration: BoxDecoration(
-                    color: primary,
-                    shape: BoxShape.circle,
+                      const SizedBox(height: 10),
+                      _ColorSwatches(colors: mode.colors),
+                    ],
                   ),
-                  child: const Icon(Icons.check,
-                      size: 16, color: Colors.white),
-                )
-              else
-                const SizedBox(width: 26),
-            ],
+                ),
+
+                const SizedBox(width: 12),
+
+                // Right badge
+                if (isActive)
+                  Container(
+                    width: 26,
+                    height: 26,
+                    decoration: BoxDecoration(
+                      color: primary,
+                      shape: BoxShape.circle,
+                    ),
+                    child: const Icon(Icons.check,
+                        size: 16, color: Colors.white),
+                  )
+                else if (mode.isCustomEffects)
+                  Icon(
+                    Icons.chevron_right,
+                    color: Colors.white.withOpacity(0.3),
+                    size: 20,
+                  )
+                else
+                  const SizedBox(width: 26),
+              ],
+            ),
           ),
         ),
       ),
@@ -202,101 +198,6 @@ class _ColorSwatches extends StatelessWidget {
           ),
         );
       }).toList(),
-    );
-  }
-}
-
-class _LoadedBadge extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: const Color(0xFF4CAF50).withOpacity(0.15),
-        borderRadius: BorderRadius.circular(10),
-        border:
-            Border.all(color: const Color(0xFF4CAF50).withOpacity(0.4)),
-      ),
-      child: const Text(
-        'Loaded',
-        style: TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w600,
-          color: Color(0xFF4CAF50),
-        ),
-      ),
-    );
-  }
-}
-
-// ─── Upload button ─────────────────────────────────────────────────────────
-
-class _UploadButton extends StatelessWidget {
-  final bool canUpload;
-  final bool isUploading;
-  final VoidCallback onUpload;
-
-  const _UploadButton({
-    required this.canUpload,
-    required this.isUploading,
-    required this.onUpload,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-
-    return SizedBox(
-      height: 52,
-      child: FilledButton(
-        onPressed: canUpload ? onUpload : null,
-        style: FilledButton.styleFrom(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16)),
-          disabledBackgroundColor: Colors.white.withOpacity(0.06),
-        ),
-        child: isUploading
-            ? Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  SizedBox(
-                    width: 18,
-                    height: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: primary),
-                  ),
-                  const SizedBox(width: 12),
-                  const Text(
-                    'Uploading…',
-                    style: TextStyle(
-                        fontSize: 15, fontWeight: FontWeight.w600),
-                  ),
-                ],
-              )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.upload_rounded,
-                    size: 18,
-                    color: canUpload
-                        ? Colors.white
-                        : Colors.white.withOpacity(0.25),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Upload to Band',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      color: canUpload
-                          ? Colors.white
-                          : Colors.white.withOpacity(0.25),
-                    ),
-                  ),
-                ],
-              ),
-      ),
     );
   }
 }

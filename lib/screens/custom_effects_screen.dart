@@ -6,6 +6,7 @@ import '../core/constants.dart';
 import '../models/custom_effect.dart';
 import '../models/effect_data.dart';
 import '../providers/custom_effect_provider.dart';
+import '../providers/device_provider.dart';
 import '../providers/lighting_provider.dart';
 
 class CustomEffectsScreen extends ConsumerWidget {
@@ -15,8 +16,10 @@ class CustomEffectsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(customEffectProvider);
     final notifier = ref.read(customEffectProvider.notifier);
+    final isConnected = ref.watch(deviceProvider).connectedDevice != null;
 
-    final canUpload = state.selectedIds.isNotEmpty && !state.isUploading;
+    final canUpload =
+        isConnected && state.selectedIds.isNotEmpty && !state.isUploading;
     final editing = state.editingEffect;
 
     return Column(

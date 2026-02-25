@@ -14,6 +14,7 @@ const _kColorUuid   = 'beb5483e-36e1-4688-b7f5-ea07361b26a8';
 const _kBrightUuid  = 'beb5483f-36e1-4688-b7f5-ea07361b26a8';
 const _kCmdUuid     = 'beb54840-36e1-4688-b7f5-ea07361b26a8';
 const _kFxUuid      = 'beb54841-36e1-4688-b7f5-ea07361b26a8';
+const _kStatusUuid  = 'beb54842-36e1-4688-b7f5-ea07361b26a8';
 
 // ── Connection state ─────────────────────────────────────────────────────────
 
@@ -28,14 +29,20 @@ class BleService {
   BluetoothCharacteristic? _brightChar;
   BluetoothCharacteristic? _cmdChar;
   BluetoothCharacteristic? _fxChar;
+  BluetoothCharacteristic? _statusChar;
 
   StreamSubscription<BluetoothConnectionState>? _connSub;
+  StreamSubscription<List<int>>? _statusSub;
 
   final _stateCtrl =
       StreamController<BleConnectionState>.broadcast();
+  final _statusCtrl = StreamController<List<int>>.broadcast();
 
   /// Emits whenever the connection state changes.
   Stream<BleConnectionState> get connectionState => _stateCtrl.stream;
+
+  /// Emits 2-byte STATUS updates from the Arduino [modeIndex, bright].
+  Stream<List<int>> get statusStream => _statusCtrl.stream;
 
   bool get isConnected => _device != null;
 
@@ -70,7 +77,9 @@ class BleService {
         _stateCtrl.add(BleConnectionState.connected);
       } else if (state == BluetoothConnectionState.disconnected) {
         _device = null;
-        _colorChar = _brightChar = _cmdChar = _fxChar = null;
+        _statusSub?.cancel();
+        _statusSub = null;
+        _colorChar = _brightChar = _cmdChar = _fxChar = _statusChar = null;
         _stateCtrl.add(BleConnectionState.disconnected);
       }
     });
@@ -91,9 +100,11 @@ class BleService {
   Future<void> disconnect() async {
     await _connSub?.cancel();
     _connSub = null;
+    await _statusSub?.cancel();
+    _statusSub = null;
     await _device?.disconnect();
     _device = null;
-    _colorChar = _brightChar = _cmdChar = _fxChar = null;
+    _colorChar = _brightChar = _cmdChar = _fxChar = _statusChar = null;
   }
 
   Future<void> _discoverCharacteristics(BluetoothDevice device) async {
@@ -110,6 +121,26 @@ class BleService {
       if (uuid == _kBrightUuid) _brightChar = c;
       if (uuid == _kCmdUuid)    _cmdChar    = c;
       if (uuid == _kFxUuid)     _fxChar     = c;
+      if (uuid == _kStatusUuid) {
+        _statusChar = c;
+        try {
+          await c.setNotifyValue(true);
+          _statusSub = c.onValueReceived.listen(_statusCtrl.add);
+        } catch (_) {
+          // Notifications not supported — read-only fallback still available.
+        }
+      }
+    }
+  }
+
+  /// Read the current STATUS value — 2 bytes: [modeIndex, bright].
+  /// Returns null if not connected or characteristic not found.
+  Future<List<int>?> readStatus() async {
+    if (_statusChar == null) return null;
+    try {
+      return await _statusChar!.read();
+    } catch (_) {
+      return null;
     }
   }
 
@@ -202,6 +233,7 @@ class BleService {
   void dispose() {
     disconnect();
     _stateCtrl.close();
+    _statusCtrl.close();
   }
 }
 

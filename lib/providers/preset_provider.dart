@@ -1,64 +1,57 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/preset.dart';
-import 'lighting_provider.dart';
-
-class PresetState {
-  final String? selectedId;
-  final String? loadedId;
-  final bool isUploading;
-
-  const PresetState({
-    this.selectedId,
-    this.loadedId,
-    this.isUploading = false,
-  });
-
-  PresetState copyWith({
-    Object? selectedId = _sentinel,
-    Object? loadedId = _sentinel,
-    bool? isUploading,
-  }) {
-    return PresetState(
-      selectedId:
-          selectedId == _sentinel ? this.selectedId : selectedId as String?,
-      loadedId: loadedId == _sentinel ? this.loadedId : loadedId as String?,
-      isUploading: isUploading ?? this.isUploading,
-    );
-  }
-}
+import '../services/ble_service.dart';
 
 const _sentinel = Object();
 
-class PresetNotifier extends Notifier<PresetState> {
-  @override
-  PresetState build() => const PresetState();
+// ── State ─────────────────────────────────────────────────────────────────────
 
-  void select(String id) {
-    if (state.isUploading) return;
-    state = state.copyWith(selectedId: id);
+class ModeState {
+  /// ID of the AppMode currently active on the Arduino.
+  /// null = solid colour / unknown (no mode command sent yet).
+  final String? activeId;
+
+  const ModeState({this.activeId});
+
+  ModeState copyWith({Object? activeId = _sentinel}) => ModeState(
+        activeId: activeId == _sentinel ? this.activeId : activeId as String?,
+      );
+}
+
+// ── Notifier ──────────────────────────────────────────────────────────────────
+
+class ModeNotifier extends Notifier<ModeState> {
+  @override
+  ModeState build() => const ModeState();
+
+  /// Called after BLE connect (or STATUS notify) to sync the active mode.
+  void setActiveFromBle(int bleIndex) {
+    final mode = modeFromBleIndex(bleIndex);
+    state = state.copyWith(activeId: mode?.id);
   }
 
-  Future<void> upload() async {
-    final id = state.selectedId;
-    if (id == null || state.isUploading) return;
+  /// Tapping a mode row: send [0x02, bleIndex] to Arduino immediately.
+  /// No-op if not connected or if the mode is Custom Effects
+  /// (those are activated via the upload flow).
+  Future<void> activate(AppMode mode) async {
+    if (mode.isCustomEffects) return;
+    final ble = ref.read(bleServiceProvider);
+    if (!ble.isConnected) return;
+    await ble.activatePreset(mode.bleIndex);
+    state = state.copyWith(activeId: mode.id);
+  }
 
-    final preset = kPresets.firstWhere((p) => p.id == id);
-
-    state = state.copyWith(isUploading: true);
-
-    // Simulate upload delay
-    await Future.delayed(const Duration(milliseconds: 1400));
-
-    // Push the preset name into the lighting state so the status bar reflects it
-    ref.read(lightingProvider.notifier).activateEffect(preset.name);
-
-    state = state.copyWith(
-      isUploading: false,
-      loadedId: id,
-    );
+  /// Mark Custom Effects as active (called after a successful upload).
+  void setCustomEffectsActive() {
+    state = state.copyWith(activeId: 'custom');
   }
 }
 
-final presetProvider =
-    NotifierProvider<PresetNotifier, PresetState>(PresetNotifier.new);
+// ── Providers ─────────────────────────────────────────────────────────────────
+
+final modeProvider =
+    NotifierProvider<ModeNotifier, ModeState>(ModeNotifier.new);
+
+// Backward-compat alias so any file still using presetProvider keeps compiling.
+final presetProvider = modeProvider;

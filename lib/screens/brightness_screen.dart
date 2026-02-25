@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../providers/device_provider.dart';
 import '../providers/lighting_provider.dart';
 import '../widgets/brightness_preview.dart';
 
@@ -10,8 +11,10 @@ class BrightnessScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(lightingProvider);
+    final deviceState = ref.watch(deviceProvider);
     final notifier = ref.read(lightingProvider.notifier);
 
+    final isConnected = deviceState.connectedDevice != null;
     final percent = (state.brightness * 100).round();
     final primary = Theme.of(context).colorScheme.primary;
 
@@ -26,7 +29,9 @@ class BrightnessScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 4),
           Text(
-            'Drag the slider to adjust intensity',
+            isConnected
+                ? 'Drag the slider to adjust intensity'
+                : 'Connect to a device to control brightness',
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 36),
@@ -49,7 +54,7 @@ class BrightnessScreen extends ConsumerWidget {
                     style: TextStyle(
                       fontSize: 64,
                       fontWeight: FontWeight.w800,
-                      color: primary,
+                      color: isConnected ? primary : primary.withOpacity(0.4),
                       height: 1,
                     ),
                   ),
@@ -58,7 +63,9 @@ class BrightnessScreen extends ConsumerWidget {
                     style: TextStyle(
                       fontSize: 28,
                       fontWeight: FontWeight.w600,
-                      color: primary.withOpacity(0.7),
+                      color: isConnected
+                          ? primary.withOpacity(0.7)
+                          : primary.withOpacity(0.25),
                     ),
                   ),
                 ],
@@ -73,7 +80,7 @@ class BrightnessScreen extends ConsumerWidget {
             children: [
               Icon(
                 Icons.brightness_low,
-                color: Colors.white.withOpacity(0.4),
+                color: Colors.white.withOpacity(isConnected ? 0.4 : 0.15),
                 size: 22,
               ),
               Expanded(
@@ -81,12 +88,16 @@ class BrightnessScreen extends ConsumerWidget {
                   value: state.brightness,
                   min: 0.1,
                   max: 1.0,
-                  onChanged: notifier.setBrightness,
+                  // onChanged: UI preview; onChangeEnd: BLE write.
+                  onChanged: isConnected ? notifier.setBrightness : null,
+                  onChangeEnd: isConnected
+                      ? (v) => notifier.sendBrightnessToDevice(v)
+                      : null,
                 ),
               ),
               Icon(
                 Icons.brightness_high,
-                color: Colors.white.withOpacity(0.9),
+                color: Colors.white.withOpacity(isConnected ? 0.9 : 0.2),
                 size: 22,
               ),
             ],
@@ -101,45 +112,18 @@ class BrightnessScreen extends ConsumerWidget {
               for (final pct in [10, 25, 50, 75, 100])
                 _QuickButton(
                   label: '$pct%',
-                  isActive: percent == pct,
-                  onTap: () => notifier.setBrightness(pct / 100),
+                  isActive: isConnected && percent == pct,
+                  isEnabled: isConnected,
+                  onTap: isConnected
+                      ? () {
+                          final v = pct / 100;
+                          notifier.setBrightness(v);
+                          notifier.sendBrightnessToDevice(v);
+                        }
+                      : null,
                 ),
             ],
           ),
-
-          if (state.activeEffect != null) ...[
-            const SizedBox(height: 28),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: primary.withOpacity(0.3)),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.auto_awesome, size: 16, color: primary),
-                  const SizedBox(width: 8),
-                  Text(
-                    state.activeEffect!,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    'Effect mode',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: primary.withOpacity(0.6),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -149,11 +133,13 @@ class BrightnessScreen extends ConsumerWidget {
 class _QuickButton extends StatelessWidget {
   final String label;
   final bool isActive;
-  final VoidCallback onTap;
+  final bool isEnabled;
+  final VoidCallback? onTap;
 
   const _QuickButton({
     required this.label,
     required this.isActive,
+    required this.isEnabled,
     required this.onTap,
   });
 
@@ -170,7 +156,9 @@ class _QuickButton extends StatelessWidget {
           color: isActive ? primary : Theme.of(context).colorScheme.surface,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: isActive ? primary : Colors.white.withOpacity(0.12),
+            color: isActive
+                ? primary
+                : Colors.white.withOpacity(isEnabled ? 0.12 : 0.05),
           ),
         ),
         child: Center(
@@ -179,7 +167,9 @@ class _QuickButton extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w600,
-              color: isActive ? Colors.white : Colors.white54,
+              color: isActive
+                  ? Colors.white
+                  : Colors.white.withOpacity(isEnabled ? 0.54 : 0.2),
             ),
           ),
         ),

@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/preset.dart';
 import '../providers/device_provider.dart';
-import '../providers/lighting_provider.dart';
+import '../providers/preset_provider.dart';
 
 class ConnectionStatusBar extends ConsumerWidget {
   const ConnectionStatusBar({super.key});
@@ -10,12 +11,20 @@ class ConnectionStatusBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final deviceState = ref.watch(deviceProvider);
-    final lightingState = ref.watch(lightingProvider);
+    final modeState = ref.watch(modeProvider);
 
     final connected = deviceState.connectedDevice;
     final isConnected = connected != null;
 
-    final effectLabel = lightingState.activeEffect ?? 'Solid color';
+    // Resolve the active mode name from the mode provider.
+    AppMode? activeMode;
+    if (modeState.activeId != null) {
+      try {
+        activeMode =
+            kModes.firstWhere((m) => m.id == modeState.activeId!);
+      } catch (_) {}
+    }
+    final modeLabel = activeMode?.name ?? 'Solid color';
 
     return Container(
       height: 44,
@@ -32,7 +41,7 @@ class ConnectionStatusBar extends ConsumerWidget {
             ? _ConnectedBar(
                 key: const ValueKey('connected'),
                 deviceName: connected.name,
-                effectLabel: effectLabel,
+                modeLabel: modeLabel,
               )
             : const _DisconnectedBar(key: ValueKey('disconnected')),
       ),
@@ -42,12 +51,12 @@ class ConnectionStatusBar extends ConsumerWidget {
 
 class _ConnectedBar extends StatelessWidget {
   final String deviceName;
-  final String effectLabel;
+  final String modeLabel;
 
   const _ConnectedBar({
     super.key,
     required this.deviceName,
-    required this.effectLabel,
+    required this.modeLabel,
   });
 
   @override
@@ -73,13 +82,13 @@ class _ConnectedBar extends StatelessWidget {
         ),
         const Spacer(),
         Icon(
-          Icons.auto_awesome,
+          Icons.tune,
           size: 12,
           color: Colors.white.withOpacity(0.5),
         ),
         const SizedBox(width: 4),
         Text(
-          effectLabel,
+          modeLabel,
           style: TextStyle(
             fontSize: 12,
             color: Colors.white.withOpacity(0.6),

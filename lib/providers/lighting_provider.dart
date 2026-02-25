@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../services/ble_service.dart';
+
 class LightingState {
   final Color color;
   final double brightness;
@@ -55,6 +57,22 @@ class LightingNotifier extends Notifier<LightingState> {
 
   void setBrightness(double value) {
     state = state.copyWith(brightness: value.clamp(0.1, 1.0));
+  }
+
+  /// Sync brightness from a BLE STATUS read — UI update only, no BLE write.
+  void setBrightnessFromBle(double value) {
+    state = state.copyWith(brightness: value.clamp(0.0, 1.0));
+  }
+
+  /// Fire-and-forget BLE brightness write — does NOT update UI state.
+  Future<void> sendBrightnessToDevice(double value) async {
+    final ble = ref.read(bleServiceProvider);
+    if (!ble.isConnected) return;
+    try {
+      await ble.setBrightness(value);
+    } catch (_) {
+      // Best-effort; ignore transient BLE errors.
+    }
   }
 
   void activateEffect(String name) {

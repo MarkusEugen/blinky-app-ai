@@ -38,11 +38,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           Expanded(
             child: IndexedStack(
               index: _currentIndex,
-              children: const [
-                DevicesScreen(),
-                PresetsScreen(),
-                CustomEffectsScreen(),
-                BrightnessScreen(),
+              children: [
+                const DevicesScreen(),
+                PresetsScreen(
+                  onShowEffects: () => setState(() => _currentIndex = 2),
+                ),
+                const CustomEffectsScreen(),
+                const BrightnessScreen(),
               ],
             ),
           ),
@@ -60,7 +62,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           NavigationDestination(
             icon: Icon(Icons.tune_outlined),
             selectedIcon: Icon(Icons.tune),
-            label: 'Presets',
+            label: 'Mode',
           ),
           NavigationDestination(
             icon: Icon(Icons.auto_awesome_outlined),

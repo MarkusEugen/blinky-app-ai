@@ -7,7 +7,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/custom_effect.dart';
 import '../models/effect_data.dart';
-import 'lighting_provider.dart';
+import '../services/ble_service.dart';
+import 'preset_provider.dart';
 
 // Sentinel for nullable copyWith fields.
 const _sentinel = Object();
@@ -150,11 +151,27 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
 
   Future<void> upload() async {
     if (state.selectedIds.isEmpty || state.isUploading) return;
+    final ble = ref.read(bleServiceProvider);
+    if (!ble.isConnected) return;
 
     state = state.copyWith(isUploading: true);
-    await Future.delayed(const Duration(milliseconds: 1400));
 
-    ref.read(lightingProvider.notifier).activateEffect('Custom');
+    // Build the ordered list of selected effects (preserving list order).
+    final selected = state.effects
+        .where((e) => state.selectedIds.contains(e.id))
+        .toList();
+
+    try {
+      for (int i = 0; i < selected.length; i++) {
+        await ble.uploadEffect(i, selected[i].data);
+      }
+      // Activate the first uploaded slot.
+      await ble.activateEffect(0);
+      ref.read(modeProvider.notifier).setCustomEffectsActive();
+    } catch (_) {
+      state = state.copyWith(isUploading: false);
+      return;
+    }
 
     state = state.copyWith(
       isUploading: false,
