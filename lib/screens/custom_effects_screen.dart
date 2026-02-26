@@ -36,6 +36,7 @@ class CustomEffectsScreen extends ConsumerWidget {
                   effect: editing,
                   state: state,
                   notifier: notifier,
+                  isConnected: isConnected,
                 ),
         ),
 
@@ -488,11 +489,13 @@ class _EditorBody extends StatelessWidget {
   final CustomEffect effect;
   final CustomEffectState state;
   final CustomEffectNotifier notifier;
+  final bool isConnected;
 
   const _EditorBody({
     required this.effect,
     required this.state,
     required this.notifier,
+    required this.isConnected,
   });
 
   @override
@@ -509,6 +512,12 @@ class _EditorBody extends StatelessWidget {
           _LoopModeSection(effect: effect, notifier: notifier),
           const _SectionDivider(),
           _PreviewButton(state: state, notifier: notifier),
+          const _SectionDivider(),
+          _UploadEditorButton(
+            isConnected: isConnected,
+            isUploading: state.isUploading,
+            onUpload: notifier.uploadEditorEffect,
+          ),
         ],
       ),
     );
@@ -932,36 +941,141 @@ class _LoopModeSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final loopMode = effect.data.loopMode;
+    final rowMs = effect.data.rowMs;
+    final primary = Theme.of(context).colorScheme.primary;
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-      child: Row(
+      child: Column(
         children: [
-          const SizedBox(
-            width: 46,
-            child: Text('Loop',
-                style: TextStyle(color: Colors.white60, fontSize: 12)),
+          // Loop / Bounce row
+          Row(
+            children: [
+              const SizedBox(
+                width: 46,
+                child: Text('Loop',
+                    style: TextStyle(color: Colors.white60, fontSize: 12)),
+              ),
+              ChoiceChip(
+                label: const Text('Loop', style: TextStyle(fontSize: 11)),
+                selected: loopMode == LoopMode.loop,
+                onSelected: (_) =>
+                    notifier.setLoopMode(effect.id, LoopMode.loop),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+              ),
+              const SizedBox(width: 6),
+              ChoiceChip(
+                label: const Text('Bounce', style: TextStyle(fontSize: 11)),
+                selected: loopMode == LoopMode.bounce,
+                onSelected: (_) =>
+                    notifier.setLoopMode(effect.id, LoopMode.bounce),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+              ),
+            ],
           ),
-          ChoiceChip(
-            label: const Text('Loop', style: TextStyle(fontSize: 11)),
-            selected: loopMode == LoopMode.loop,
-            onSelected: (_) =>
-                notifier.setLoopMode(effect.id, LoopMode.loop),
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
-          ),
-          const SizedBox(width: 6),
-          ChoiceChip(
-            label: const Text('Bounce', style: TextStyle(fontSize: 11)),
-            selected: loopMode == LoopMode.bounce,
-            onSelected: (_) =>
-                notifier.setLoopMode(effect.id, LoopMode.bounce),
-            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+          const SizedBox(height: 2),
+          // Row advance interval slider (timer-based mode only)
+          Row(
+            children: [
+              const SizedBox(
+                width: 46,
+                child: Text('Step',
+                    style: TextStyle(color: Colors.white60, fontSize: 12)),
+              ),
+              Expanded(
+                child: SliderTheme(
+                  data: SliderTheme.of(context).copyWith(
+                    trackHeight: 2,
+                    thumbShape: const RoundSliderThumbShape(
+                        enabledThumbRadius: 7),
+                    overlayShape: const RoundSliderOverlayShape(
+                        overlayRadius: 14),
+                  ),
+                  child: Slider(
+                    value: rowMs.toDouble(),
+                    min: 20,
+                    max: 1000,
+                    divisions: 98, // 10 ms steps
+                    activeColor: primary,
+                    inactiveColor: primary.withOpacity(0.2),
+                    onChanged: (v) =>
+                        notifier.setRowMs(effect.id, v.round()),
+                  ),
+                ),
+              ),
+              SizedBox(
+                width: 48,
+                child: Text(
+                  '${rowMs}ms',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─── Upload editor button ─────────────────────────────────────────────────────
+
+class _UploadEditorButton extends StatelessWidget {
+  final bool isConnected;
+  final bool isUploading;
+  final Future<void> Function() onUpload;
+
+  const _UploadEditorButton({
+    required this.isConnected,
+    required this.isUploading,
+    required this.onUpload,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final canUpload = isConnected && !isUploading;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+      child: SizedBox(
+        height: 44,
+        child: FilledButton(
+          onPressed: canUpload ? onUpload : null,
+          style: FilledButton.styleFrom(
+            backgroundColor:
+                canUpload ? const Color(0xFF00695C) : null,
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16)),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              isUploading
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
+                    )
+                  : const Icon(Icons.upload_rounded,
+                      size: 20, color: Colors.white),
+              const SizedBox(width: 8),
+              Text(
+                isUploading ? 'Uploading…' : 'Upload to Band',
+                style: const TextStyle(
+                    fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

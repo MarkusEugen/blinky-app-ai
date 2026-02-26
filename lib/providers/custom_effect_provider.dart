@@ -180,6 +180,30 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
     );
   }
 
+  // ── Editor upload (quick test) ───────────────────────────────────────────
+
+  /// Uploads the currently-edited effect to slot 0 on the Arduino and
+  /// activates Custom mode with a single slot.  The band will play only this
+  /// one effect, which is the expected behaviour for in-editor testing.
+  Future<void> uploadEditorEffect() async {
+    final effect = state.editingEffect;
+    if (effect == null || state.isUploading) return;
+    final ble = ref.read(bleServiceProvider);
+    if (!ble.isConnected) return;
+
+    stopPreview();
+    state = state.copyWith(isUploading: true);
+    try {
+      await ble.uploadEffect(0, effect.data);
+      await ble.activateCustomMode(1);
+      ref.read(modeProvider.notifier).setCustomEffectsActive();
+    } catch (_) {
+      state = state.copyWith(isUploading: false);
+      return;
+    }
+    state = state.copyWith(isUploading: false);
+  }
+
   // ── Editor navigation ────────────────────────────────────────────────────
 
   void openEditor(String id) {
@@ -231,6 +255,10 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
           modes.remove(mode);
         } else {
           modes.add(mode);
+          // Pegel and Next on Beat are mutually exclusive — selecting one
+          // deselects the other.
+          if (mode == SoundMode.pegel) modes.remove(SoundMode.nextOnBeat);
+          if (mode == SoundMode.nextOnBeat) modes.remove(SoundMode.pegel);
         }
         return e.copyWith(data: e.data.copyWith(soundModes: modes));
       }).toList(),
@@ -242,16 +270,31 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
     _updateData(id, (d) => d.copyWith(loopMode: mode));
   }
 
+  void setRowMs(String id, int ms) {
+    _updateData(id, (d) => d.copyWith(rowMs: ms.clamp(20, 1000)));
+    // If this effect is currently being previewed, restart the timer so the
+    // new interval takes effect immediately without stopping the preview.
+    if (state.isPreviewing &&
+        (state.editingId == id || state.previewingListId == id)) {
+      _restartPreviewTimer(ms.clamp(20, 1000));
+    }
+  }
+
   // ── Preview ──────────────────────────────────────────────────────────────
+
+  void _restartPreviewTimer(int ms) {
+    _previewTimer?.cancel();
+    _previewTimer = Timer.periodic(
+      Duration(milliseconds: ms),
+      (_) => _advancePreviewRow(),
+    );
+  }
 
   void startPreview() {
     if (state.isPreviewing) return;
     _previewForward = true;
     state = state.copyWith(isPreviewing: true, previewRow: 0);
-    _previewTimer = Timer.periodic(
-      const Duration(milliseconds: 500),
-      (_) => _advancePreviewRow(),
-    );
+    _restartPreviewTimer(state.editingEffect?.data.rowMs ?? 500);
   }
 
   void stopPreview() {
@@ -261,17 +304,14 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
   }
 
   void startListPreview(String id) {
-    _previewTimer?.cancel();
     _previewForward = true;
+    final ms = state.effects.firstWhere((e) => e.id == id).data.rowMs;
     state = state.copyWith(
       previewingListId: id,
       previewRow: 0,
       isPreviewing: true,
     );
-    _previewTimer = Timer.periodic(
-      const Duration(milliseconds: 500),
-      (_) => _advancePreviewRow(),
-    );
+    _restartPreviewTimer(ms);
   }
 
   void stopListPreview() {

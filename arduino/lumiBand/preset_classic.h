@@ -7,6 +7,7 @@
 //   Adafruit_NeoPixel strip;
 //   uint8_t bright;
 //   #define NUM_LEDS, MIC_PIN
+//   audio.h included (provides gOnBeat, gRelativePegel, gPegel_smooth, etc.)
 // ═══════════════════════════════════════════════════════════════════════════════
 #pragma once
 
@@ -14,10 +15,7 @@
 #define LED_COUNT  NUM_LEDS
 #define LED_OFFSET 0
 
-#define RAW_BUFFER_SIZE         160
-#define MIN_AMBIENT_FLOOR       8.f
 #define LED_COUNT_HALF          (LED_COUNT / 2)
-#define BEATCOUNT_MAX           64
 #define COLOR_COUNT             8
 #define STORY_COUNT             9
 #define WHITE_FLASH_COLOR       0xffffaf
@@ -28,21 +26,11 @@
 #define AUTO_COLOR_TIMER        262144  // 4,3 m
 #define AUTO_STORY_TIMER        262144
 
-// Global audio / animation state
-bool     gOnBeat        = false;
-uint8_t  gBeatCounter   = 0;
-uint32_t gNOW           = 0;
+// Classic-only animation state
+// (audio globals — gOnBeat, gNOW, gRelativePegel, etc. — live in audio.h)
 uint8_t  gStoryPtr      = 0;
 uint8_t  gColorPtr      = 0;
-uint32_t gTimeDif       = 0;
 uint8_t  gEffect        = 0;
-uint32_t gLastBeatTime  = 0;
-float    gLastPegel     = 0.f;
-float    gAmbient       = 0.f;
-float    gRelativePegel = 0.f;
-float    gDirection2    = 1.f;
-float    gSpin2         = 0.f;
-float    gPegel_smooth  = 0.f;
 uint16_t stars_buffer[LED_COUNT];
 uint16_t hueshift       = 0;
 uint8_t  gShiftDir      = 0;
@@ -296,59 +284,22 @@ void glitzer() {
 // ── Public interface ──────────────────────────────────────────────────────────
 
 void classicInit() {
-  gNOW          = millis();
-  gLastBeatTime = gNOW;
-  gLastPegel    = 0.f;
-  gAmbient      = 0.f;
-  gStoryPtr     = 0;
-  gColorPtr     = 0;
-  gPegel_smooth = 0.f;
-  gSpin2        = 0.f;
-  gDirection2   = 1.f;
-  hueshift      = 0;
+  audioInit();   // reset shared audio baseline
+  gStoryPtr = 0;
+  gColorPtr = 0;
+  hueshift  = 0;
   memset(stars_buffer, 0, sizeof(stars_buffer));
   binkieEffect9_reset();
   classicLastTick = millis();
 }
 
 void classicTick() {
+  // Audio globals (gOnBeat, gRelativePegel, gPegel_smooth, …) are already
+  // updated by audioTick() called earlier in loop().
   gNOW = millis();
 
   if (gNOW - classicLastTick < 20) return;   // ~50 fps
   classicLastTick = gNOW;
-
-  // ── Audio sampling ─────────────────────────────────────────────────────────
-  uint16_t minA = 1023, maxA = 0;
-  for (uint8_t i = 0; i < RAW_BUFFER_SIZE; i++) {
-    uint16_t aIN = analogRead(MIC_PIN);
-    maxA = max(aIN, maxA);
-    minA = min(aIN, minA);
-  }
-  uint16_t variation = maxA - minA;
-
-  gLastPegel *= 0.9025f;
-  gAmbient   *= 0.9959675f;
-
-  float    newPegel = max((float)variation, gLastPegel);
-  uint32_t timeDiff = gNOW - gLastBeatTime;
-  uint8_t  beatInc  = 2 + uint8_t(gAmbient) / 4;
-  gOnBeat = (newPegel > (gLastPegel + beatInc)) && (timeDiff > 333);
-
-  if (gOnBeat) {
-    gBeatCounter  = (gBeatCounter + 1) % BEATCOUNT_MAX;
-    gLastBeatTime = gNOW;
-    gTimeDif      = timeDiff;
-  }
-
-  gLastPegel     = newPegel;
-  gAmbient       = max(gAmbient, newPegel);
-  gRelativePegel = newPegel / max(gAmbient, MIN_AMBIENT_FLOOR);
-
-  if (gOnBeat)  gDirection2  = gBeatCounter % 8 > 3 ? 1.f : -1.f;
-  else          gDirection2 *= 0.98f;
-
-  gPegel_smooth = min(1.f, 0.9f * gPegel_smooth + 0.1f * gRelativePegel);
-  gSpin2       += gDirection2 * gPegel_smooth;
 
   // ── Effect dispatch ────────────────────────────────────────────────────────
   gStoryPtr =  gNOW / AUTO_STORY_TIMER;

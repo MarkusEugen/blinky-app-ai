@@ -12,28 +12,35 @@ class EffectData {
   final List<List<Color>> rows; // kEffectRows × kMaxLed
   final Set<SoundMode> soundModes;
   final LoopMode loopMode;
+  /// Row-advance interval in milliseconds (20–1000).  Only used by the
+  /// timer-based advance path (i.e. when neither Pegel nor Next-on-Beat is set).
+  final int rowMs;
 
   const EffectData({
     required this.rows,
     required this.soundModes,
     required this.loopMode,
+    this.rowMs = 500,
   });
 
   factory EffectData.blank() => EffectData(
         rows: List.generate(kEffectRows, (_) => List.filled(kMaxLed, Colors.black)),
         soundModes: const {},
         loopMode: LoopMode.loop,
+        rowMs: 500,
       );
 
   EffectData copyWith({
     List<List<Color>>? rows,
     Set<SoundMode>? soundModes,
     LoopMode? loopMode,
+    int? rowMs,
   }) =>
       EffectData(
         rows: rows ?? this.rows,
         soundModes: soundModes ?? this.soundModes,
         loopMode: loopMode ?? this.loopMode,
+        rowMs: rowMs ?? this.rowMs,
       );
 
   // ── Immutable mutation helpers ─────────────────────────────────────────
@@ -74,6 +81,7 @@ class EffectData {
             .toList(),
         'soundModes': soundModes.map((m) => m.name).toList(),
         'loopMode': loopMode.name,
+        'rowMs': rowMs,
       };
 
   factory EffectData.fromJson(Map<String, dynamic> json) {
@@ -94,7 +102,9 @@ class EffectData {
       orElse: () => LoopMode.loop,
     );
 
-    return EffectData(rows: rows, soundModes: soundModes, loopMode: loopMode);
+    final rowMs = ((json['rowMs'] as int?) ?? 500).clamp(20, 1000);
+
+    return EffectData(rows: rows, soundModes: soundModes, loopMode: loopMode, rowMs: rowMs);
   }
 
   // ── Immutable mutation helpers — continued ─────────────────────────────

@@ -65,15 +65,16 @@ BLECharacteristic   statusChar(STATUS_UUID, BLERead | BLENotify, 2);
 #define NUM_ROWS     8
 
 struct __attribute__((packed)) Effect {
-  uint8_t rgb[NUM_ROWS][NUM_LEDS][3];  // [row][led][R/G/B]
-  uint8_t settings;                    // bits 0-3: SoundMode, bit 4: LoopMode
+  uint8_t  rgb[NUM_ROWS][NUM_LEDS][3];  // [row][led][R/G/B]  360 bytes
+  uint8_t  settings;                    // bits 0-3: SoundMode, bit 4: LoopMode
+  uint16_t rowMs;                       // row advance interval in ms (20–1000)
 };
 
 Effect effects[NUM_EFFECTS];
 bool   effectLoaded[NUM_EFFECTS] = {};
 
-// Upload accumulator (481 bytes: 8×15×4 ARGB + 1 settings byte)
-uint8_t uploadBuf[481];
+// Upload accumulator (483 bytes: 8×15×4 ARGB + 1 settings + 2 rowMs)
+uint8_t uploadBuf[483];
 int     uploadSlot = -1;
 int     uploadLen  = 0;
 
@@ -88,7 +89,7 @@ uint8_t solidR = 0, solidG = 0, solidB = 0;  // last received RGB (stored for fu
 
 // ── Flash persistence ─────────────────────────────────────────────────────────
 
-#define FLASH_MAGIC  0x4C551E02UL   // bumped when struct layout changed
+#define FLASH_MAGIC  0x4C551E03UL   // bumped when struct layout changed
 
 struct __attribute__((packed)) FlashStore {
   uint32_t magic;
@@ -183,6 +184,12 @@ void showRow(int slot, int row) {
   strip.show();
 }
 
+// ── Audio engine — must come before mode includes ─────────────────────────────
+// Provides audioInit(), audioTick(), and the shared globals:
+//   gAmbient, gRelativePegel, gOnBeat, gDirection2, gPegel_smooth, gSpin2
+
+#include "audio.h"
+
 // ── Mode implementations ──────────────────────────────────────────────────────
 
 #include "preset_classic.h"
@@ -229,8 +236,11 @@ void updateStatus() {
 
 // ── Effect upload helpers ─────────────────────────────────────────────────────
 
-// Parse the 481-byte ARGB+settings buffer into the Effect struct, then persist.
+// Parse the 483-byte ARGB+settings+rowMs buffer into the Effect struct, then persist.
 // Flutter Color.value layout: 0xAARRGGBB (big-endian stream).
+// bytes   0–479  8 rows × 15 LEDs × 4-byte big-endian ARGB
+// byte  480      settings bitmask
+// bytes 481–482  rowMs big-endian uint16 (20–1000 ms)
 void commitUpload(int slot) {
   Effect &e = effects[slot];
   int idx = 0;
@@ -242,7 +252,9 @@ void commitUpload(int slot) {
       idx += 4;
     }
   }
-  e.settings         = uploadBuf[480];
+  e.settings = uploadBuf[480];
+  uint16_t ms = ((uint16_t)uploadBuf[481] << 8) | uploadBuf[482];
+  e.rowMs    = (ms >= 20 && ms <= 1000) ? ms : 500;
   effectLoaded[slot] = true;
   Serial.print("FX committed slot "); Serial.println(slot);
   flashSave();
@@ -257,9 +269,10 @@ void setup() {
   digitalWrite(LED_BUILTIN, LOW);
 
   strip.begin();
-  strip.setBrightness(255);
+  strip.setBrightness(16);
   strip.show();
 
+  audioInit();   // establish baseline before any mode starts
   flashLoad();
 
   // Initialise the restored (or default) mode before BLE is up.
@@ -370,13 +383,13 @@ void loop() {
 
       } else if (d[0] == 0x01 && uploadSlot >= 0) {
         int payloadLen = len - 1;
-        if (uploadLen + payloadLen <= 481) {
+        if (uploadLen + payloadLen <= 483) {
           memcpy(uploadBuf + uploadLen, d + 1, payloadLen);
           uploadLen += payloadLen;
         }
 
       } else if (d[0] == 0x02 && uploadSlot >= 0) {
-        if (uploadLen == 481) {
+        if (uploadLen == 483) {
           commitUpload(uploadSlot);
         } else {
           Serial.print("FX upload size mismatch: "); Serial.println(uploadLen);
@@ -387,6 +400,12 @@ void loop() {
     }
   }
 
-  // ── Mode tick — runs unconditionally, BLE or not ───────────────────────────
-  runModeTick();
+  // ── Audio + mode tick — rate-limited to ~50 fps ───────────────────────────
+  static unsigned long lastTick = 0;
+  unsigned long now = millis();
+  if (now - lastTick >= 20) {
+    lastTick = now;
+    audioTick();    // sample mic, update shared audio globals
+    runModeTick();
+  }
 }

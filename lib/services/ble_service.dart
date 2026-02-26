@@ -72,10 +72,20 @@ class BleService {
     _stateCtrl.add(BleConnectionState.connecting);
     _device = device;
 
+    // Guard against the spurious 'disconnected' event that iOS CoreBluetooth
+    // emits immediately when subscribing to connectionState on a fresh
+    // BluetoothDevice.fromId() object (i.e. a device loaded from storage on
+    // app restart rather than discovered via a live scan).  We only forward a
+    // 'disconnected' event once the device has actually been seen as connected.
+    bool didConnect = false;
+
     _connSub = device.connectionState.listen((state) {
       if (state == BluetoothConnectionState.connected) {
+        didConnect = true;
         _stateCtrl.add(BleConnectionState.connected);
       } else if (state == BluetoothConnectionState.disconnected) {
+        if (!didConnect) return; // ignore spurious initial state
+        didConnect = false;
         _device = null;
         _statusSub?.cancel();
         _statusSub = null;
@@ -178,13 +188,13 @@ class BleService {
   //   [0x01, d0..d18]        — append up to 19 bytes of effect data
   //   [0x02, slot]           — commit (Arduino parses and stores)
   //
-  // Total effect payload: 8 rows × 15 LEDs × 4 bytes ARGB + 1 settings = 481 bytes
-  // → ceil(481 / 19) = 26 data packets
+  // Total effect payload: 8 rows × 15 LEDs × 4 bytes ARGB + 1 settings + 2 rowMs = 483 bytes
+  // → ceil(483 / 19) = 26 data packets
 
   Future<void> uploadEffect(int slot, EffectData data) async {
     if (_fxChar == null) return;
 
-    final payload = _serializeEffect(data); // 481 bytes
+    final payload = _serializeEffect(data); // 483 bytes
 
     // 1. Begin
     await _fxChar!.write([0x00, slot], withoutResponse: false);
@@ -201,12 +211,14 @@ class BleService {
     await _fxChar!.write([0x02, slot], withoutResponse: false);
   }
 
-  /// Serialise EffectData → 481 bytes.
+  /// Serialise EffectData → 483 bytes.
   ///
-  /// Layout: 8 rows × 15 × 4 bytes big-endian ARGB (Color.value), then 1
-  /// settings byte (bits 0-3: SoundMode bitmask, bit 4: LoopMode).
+  /// Layout:
+  ///   bytes   0–479  8 rows × 15 LEDs × 4 bytes big-endian ARGB (Color.value)
+  ///   byte  480      settings (bits 0-3: SoundMode bitmask, bit 4: LoopMode)
+  ///   bytes 481–482  rowMs big-endian uint16 (row advance interval, 20–1000 ms)
   Uint8List _serializeEffect(EffectData data) {
-    final bd = ByteData(481);
+    final bd = ByteData(483);
     int offset = 0;
 
     for (final row in data.rows) {
@@ -222,6 +234,8 @@ class BleService {
     }
     if (data.loopMode == LoopMode.bounce) settings |= 0x10; // bit 4
     bd.setUint8(480, settings);
+
+    bd.setUint16(481, data.rowMs.clamp(20, 1000), Endian.big);
 
     return bd.buffer.asUint8List();
   }
