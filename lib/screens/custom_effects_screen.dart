@@ -1008,9 +1008,10 @@ class _LoopModeSection extends StatelessWidget {
                 ),
               ),
               SizedBox(
-                width: 48,
+                width: 64,
                 child: Text(
                   '${rowMs}ms',
+                  maxLines: 1,
                   textAlign: TextAlign.right,
                   style: TextStyle(
                     fontSize: 12,

@@ -149,27 +149,40 @@ class DeviceNotifier extends Notifier<DeviceState> {
     }
 
     _scanSub = FlutterBluePlus.scanResults.listen((results) {
-      final knownIds = state.knownDevices.map((d) => d.id).toSet();
       final seen = <String>{};
       final discovered = <BleDevice>[];
+      var knownDevices = state.knownDevices;
 
       for (final r in results) {
         final id = r.device.remoteId.str;
-        if (knownIds.contains(id)) continue;
         if (!seen.add(id)) continue; // deduplicate within this emission
 
-        // Prefer the name cached by the OS; fall back to the advertised local name.
-        final name = r.device.platformName.isNotEmpty
-            ? r.device.platformName
-            : r.advertisementData.advName.isNotEmpty
-                ? r.advertisementData.advName
+        // Prefer the live advertised name (always up-to-date); fall back to
+        // the OS-cached platformName which can be stale after a firmware rename.
+        final advName = r.advertisementData.advName;
+        final freshName = advName.isNotEmpty
+            ? advName
+            : r.device.platformName.isNotEmpty
+                ? r.device.platformName
                 : 'LumiBand-${id.replaceAll(':', '').substring(0, 4)}';
 
         _deviceMap[id] = r.device;
-        discovered.add(BleDevice(id: id, name: name, isConnected: false));
+
+        final knownIndex = knownDevices.indexWhere((d) => d.id == id);
+        if (knownIndex != -1) {
+          // Update the saved name if the device is advertising a different one.
+          if (advName.isNotEmpty && knownDevices[knownIndex].name != advName) {
+            knownDevices = List<BleDevice>.from(knownDevices)
+              ..[knownIndex] = knownDevices[knownIndex].copyWith(name: advName);
+          }
+          continue;
+        }
+
+        discovered.add(BleDevice(id: id, name: freshName, isConnected: false));
       }
 
-      state = state.copyWith(discoveredDevices: discovered);
+      state = state.copyWith(discoveredDevices: discovered, knownDevices: knownDevices);
+      _saveDevices();
     });
   }
 

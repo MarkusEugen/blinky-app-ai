@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/constants.dart';
 import '../models/custom_effect.dart';
 import '../models/effect_data.dart';
 import '../services/ble_service.dart';
@@ -94,14 +95,149 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
 
   // ── Persistence ──────────────────────────────────────────────────────────
 
-  static List<CustomEffect> _defaultEffects() => List.generate(
-        8,
-        (i) => CustomEffect(
-          id: 'effect_${i + 1}',
-          name: 'myEffect${i + 1}',
-          data: EffectData.blank(),
-        ),
-      );
+  static List<CustomEffect> _defaultEffects() => [
+        CustomEffect(id: 'effect_1', name: 'Rainbow',  data: _rainbowEffect()),
+        CustomEffect(id: 'effect_2', name: 'Fire',     data: _fireEffect()),
+        CustomEffect(id: 'effect_3', name: 'Ocean',    data: _oceanEffect()),
+        CustomEffect(id: 'effect_4', name: 'Candy',    data: _candyEffect()),
+        CustomEffect(id: 'effect_5', name: 'Sunset',   data: _sunsetEffect()),
+        CustomEffect(id: 'effect_6', name: 'Forest',   data: _forestEffect()),
+        CustomEffect(id: 'effect_7', name: 'Cosmic',   data: _cosmicEffect()),
+        CustomEffect(id: 'effect_8', name: 'Ice',      data: _iceEffect()),
+      ];
+
+  // ── Colour helpers ────────────────────────────────────────────────────────
+
+  static Color _hsv(double h, double s, double v) =>
+      HSVColor.fromAHSV(1.0, h % 360, s, v).toColor();
+
+  static List<Color> _grad(Color a, Color b) =>
+      List.generate(kMaxLed, (i) => Color.lerp(a, b, i / (kMaxLed - 1))!);
+
+  static List<Color> _solid(Color c) => List.filled(kMaxLed, c);
+
+  // ── Default effect patterns ────────────────────────────────────────────────
+
+  /// Full hue rainbow rotating 45° per row → spinning rainbow ring animation.
+  static EffectData _rainbowEffect() {
+    final rows = List.generate(kEffectRows, (r) => List.generate(
+      kMaxLed,
+      (i) => _hsv(r * 45.0 + i * (300.0 / (kMaxLed - 1)), 1.0, 1.0),
+    ));
+    return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.loop, rowMs: 100);
+  }
+
+  /// Fire palette: deep red → orange → yellow, bouncing.
+  static EffectData _fireEffect() {
+    final cols = [
+      [_hsv(0, 1.0, 0.8),  _hsv(15, 1.0, 1.0)],
+      [_hsv(15, 1.0, 1.0), _hsv(30, 1.0, 1.0)],
+      [_hsv(30, 1.0, 1.0), _hsv(50, 1.0, 1.0)],
+      [_hsv(50, 1.0, 1.0), _hsv(30, 1.0, 0.9)],
+      [_hsv(30, 1.0, 0.9), _hsv(10, 1.0, 1.0)],
+      [_hsv(10, 1.0, 1.0), _hsv(0,  1.0, 0.7)],
+      [_hsv(5,  1.0, 0.9), _hsv(40, 1.0, 1.0)],
+      [_hsv(40, 1.0, 1.0), _hsv(5,  1.0, 0.8)],
+    ];
+    final rows = cols.map((c) => _grad(c[0], c[1])).toList();
+    return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.bounce, rowMs: 80);
+  }
+
+  /// Ocean: alternating blue↔cyan gradient sweeps.
+  static EffectData _oceanEffect() {
+    final pairs = [
+      [_hsv(200, 1.0, 0.9), _hsv(175, 0.8, 1.0)],
+      [_hsv(175, 0.8, 1.0), _hsv(210, 1.0, 0.6)],
+      [_hsv(195, 0.9, 1.0), _hsv(165, 0.7, 0.9)],
+      [_hsv(165, 0.7, 0.9), _hsv(215, 1.0, 1.0)],
+      [_hsv(215, 1.0, 1.0), _hsv(185, 0.9, 1.0)],
+      [_hsv(185, 0.9, 1.0), _hsv(200, 1.0, 0.7)],
+      [_hsv(200, 0.7, 0.7), _hsv(175, 1.0, 1.0)],
+      [_hsv(175, 1.0, 1.0), _hsv(200, 1.0, 0.9)],
+    ];
+    final rows = pairs.map((p) => _grad(p[0], p[1])).toList();
+    return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.loop, rowMs: 180);
+  }
+
+  /// Candy: solid bright stripes cycling through vivid hues.
+  static EffectData _candyEffect() {
+    final palette = [
+      _hsv(330, 1.0, 1.0), // hot pink
+      _hsv(180, 1.0, 1.0), // cyan
+      _hsv(300, 1.0, 1.0), // magenta
+      _hsv(90,  1.0, 1.0), // lime
+      _hsv(15,  1.0, 1.0), // orange
+      _hsv(270, 1.0, 1.0), // violet
+      _hsv(55,  1.0, 1.0), // yellow
+      _hsv(210, 1.0, 1.0), // sky blue
+    ];
+    final rows = palette.map(_solid).toList();
+    return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.loop, rowMs: 150);
+  }
+
+  /// Sunset: warm hues shifting from scarlet through orange to violet.
+  static EffectData _sunsetEffect() {
+    final pairs = [
+      [_hsv(0,   1.0, 1.0), _hsv(20,  1.0, 1.0)],
+      [_hsv(20,  1.0, 1.0), _hsv(40,  1.0, 0.9)],
+      [_hsv(40,  1.0, 0.9), _hsv(20,  0.9, 1.0)],
+      [_hsv(15,  1.0, 1.0), _hsv(300, 0.8, 0.8)],
+      [_hsv(300, 0.8, 0.8), _hsv(270, 1.0, 0.7)],
+      [_hsv(270, 1.0, 0.7), _hsv(10,  1.0, 0.9)],
+      [_hsv(10,  1.0, 0.9), _hsv(35,  1.0, 1.0)],
+      [_hsv(35,  1.0, 1.0), _hsv(0,   1.0, 1.0)],
+    ];
+    final rows = pairs.map((p) => _grad(p[0], p[1])).toList();
+    return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.bounce, rowMs: 220);
+  }
+
+  /// Forest: deep greens to bright lime with golden accents.
+  static EffectData _forestEffect() {
+    final pairs = [
+      [_hsv(130, 1.0, 0.5), _hsv(100, 0.9, 1.0)],
+      [_hsv(100, 0.9, 1.0), _hsv(140, 1.0, 0.4)],
+      [_hsv(140, 1.0, 0.4), _hsv(80,  1.0, 0.9)],
+      [_hsv(80,  1.0, 0.9), _hsv(120, 0.8, 0.7)],
+      [_hsv(120, 0.8, 0.7), _hsv(90,  1.0, 1.0)],
+      [_hsv(90,  1.0, 1.0), _hsv(55,  1.0, 0.9)],
+      [_hsv(55,  1.0, 0.9), _hsv(120, 1.0, 0.5)],
+      [_hsv(120, 1.0, 0.5), _hsv(100, 0.9, 1.0)],
+    ];
+    final rows = pairs.map((p) => _grad(p[0], p[1])).toList();
+    return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.loop, rowMs: 200);
+  }
+
+  /// Cosmic: deep violet through indigo and pink with bright flashes.
+  static EffectData _cosmicEffect() {
+    final pairs = [
+      [_hsv(270, 1.0, 0.9), _hsv(300, 0.8, 1.0)],
+      [_hsv(300, 0.8, 1.0), _hsv(240, 1.0, 0.6)],
+      [_hsv(240, 1.0, 0.6), _hsv(280, 0.6, 1.0)],
+      [_hsv(280, 0.6, 1.0), _hsv(320, 1.0, 0.9)],
+      [_hsv(320, 1.0, 0.9), _hsv(260, 1.0, 0.7)],
+      [_hsv(260, 1.0, 0.7), _hsv(290, 0.5, 1.0)],
+      [_hsv(290, 0.5, 1.0), _hsv(250, 1.0, 0.9)],
+      [_hsv(250, 1.0, 0.9), _hsv(310, 0.9, 1.0)],
+    ];
+    final rows = pairs.map((p) => _grad(p[0], p[1])).toList();
+    return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.bounce, rowMs: 160);
+  }
+
+  /// Ice: arctic whites fading into deep arctic blue.
+  static EffectData _iceEffect() {
+    final pairs = [
+      [const Color(0xFFFFFFFF), _hsv(195, 0.4, 1.0)],
+      [_hsv(195, 0.4, 1.0),    _hsv(200, 0.8, 0.9)],
+      [_hsv(200, 0.8, 0.9),    _hsv(210, 1.0, 0.7)],
+      [_hsv(210, 1.0, 0.7),    const Color(0xFFFFFFFF)],
+      [const Color(0xFFFFFFFF), _hsv(200, 0.5, 1.0)],
+      [_hsv(200, 0.5, 1.0),    _hsv(205, 0.9, 0.8)],
+      [_hsv(205, 0.9, 0.8),    _hsv(195, 0.3, 1.0)],
+      [_hsv(195, 0.3, 1.0),    const Color(0xFFFFFFFF)],
+    ];
+    final rows = pairs.map((p) => _grad(p[0], p[1])).toList();
+    return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.bounce, rowMs: 250);
+  }
 
   Future<void> _loadEffects() async {
     final prefs = await SharedPreferences.getInstance();
@@ -201,7 +337,11 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
       state = state.copyWith(isUploading: false);
       return;
     }
-    state = state.copyWith(isUploading: false);
+    state = state.copyWith(
+      isUploading: false,
+      uploadedIds: {effect.id},
+      selectedIds: const {},
+    );
   }
 
   // ── Editor navigation ────────────────────────────────────────────────────

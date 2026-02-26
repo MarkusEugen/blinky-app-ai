@@ -288,7 +288,14 @@ void setup() {
     while (true);
   }
 
-  BLE.setLocalName("LumiBand");
+  // Build a unique name from the last 2 bytes of the BLE MAC address,
+  // e.g. "LumiBand-A3F2" so multiple bands are distinguishable in the list.
+  String mac = BLE.address();          // "aa:bb:cc:dd:ee:ff"
+  String suffix = mac.substring(mac.length() - 5); // "ee:ff"
+  suffix.replace(":", "");
+  suffix.toUpperCase();                // "EEFF"
+  String deviceName = "LumiBand-" + suffix;
+  BLE.setLocalName(deviceName.c_str());
   BLE.setAdvertisedService(svc);
   svc.addCharacteristic(colorChar);
   svc.addCharacteristic(brightChar);
@@ -298,7 +305,8 @@ void setup() {
   BLE.addService(svc);
   BLE.advertise();
 
-  Serial.println("LumiBand advertising…");
+  Serial.print("Advertising as: ");
+  Serial.println(deviceName);
 }
 
 // ── loop ──────────────────────────────────────────────────────────────────────
