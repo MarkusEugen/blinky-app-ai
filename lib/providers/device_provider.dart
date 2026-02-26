@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/ble_device.dart';
 import '../services/ble_service.dart';
@@ -41,6 +43,8 @@ class DeviceState {
     );
   }
 }
+
+const _kDeviceStorageKey = 'known_devices_v1';
 
 // ── Notifier ─────────────────────────────────────────────────────────────────
 
@@ -87,10 +91,44 @@ class DeviceNotifier extends Notifier<DeviceState> {
       }
     });
 
+    // Async load — replaces empty list once storage is read.
+    _loadDevices();
+
     return const DeviceState(
       knownDevices: [],
       discoveredDevices: [],
       isScanning: false,
+    );
+  }
+
+  // ── Persistence ─────────────────────────────────────────────────────────────
+
+  Future<void> _loadDevices() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kDeviceStorageKey);
+    if (raw == null) return;
+    try {
+      final devices = (jsonDecode(raw) as List)
+          .map((e) => BleDevice.fromJson(e as Map<String, dynamic>))
+          .toList();
+
+      // Pre-populate _deviceMap so known devices can be connected without
+      // requiring a fresh scan.
+      for (final d in devices) {
+        _deviceMap[d.id] = BluetoothDevice.fromId(d.id);
+      }
+
+      state = state.copyWith(knownDevices: devices);
+    } catch (_) {
+      // Corrupt data — start fresh.
+    }
+  }
+
+  Future<void> _saveDevices() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _kDeviceStorageKey,
+      jsonEncode(state.knownDevices.map((d) => d.toJson()).toList()),
     );
   }
 
@@ -170,6 +208,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
           : [connected, ...updatedKnown],
       discoveredDevices: state.discoveredDevices.where((d) => d.id != id).toList(),
     );
+    _saveDevices(); // persist before awaiting connection
 
     try {
       await ble.connect(btDevice);
@@ -218,6 +257,7 @@ class DeviceNotifier extends Notifier<DeviceState> {
     state = state.copyWith(
       knownDevices: state.knownDevices.where((d) => d.id != id).toList(),
     );
+    _saveDevices();
   }
 }
 

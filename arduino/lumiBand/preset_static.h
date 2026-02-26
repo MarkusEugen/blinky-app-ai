@@ -6,7 +6,6 @@
 static unsigned long staticLastDraw = 0;
 
 void staticInit() {
-  strip.setBrightness(255);
   showSolid(255, 255, 255);   // showSolid applies dim() internally
   staticLastDraw = millis();
 }

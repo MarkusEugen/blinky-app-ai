@@ -630,7 +630,7 @@ class _MatrixRow extends StatelessWidget {
       child: Row(
         children: [
           // Fill row button
-          _rowBtn(Icons.format_color_fill, Colors.white54,
+          _rowBtn(Icons.format_color_fill, const Color(0xFFFF9100),
               () => _openFillPicker(context)),
 
           // 15 cell squares — each takes an equal Expanded share
@@ -666,7 +666,7 @@ class _MatrixRow extends StatelessWidget {
           ),
 
           // Gradient button
-          _rowBtn(Icons.gradient, Colors.white54,
+          _rowBtn(Icons.gradient, const Color(0xFF40C4FF),
               () => _openGradientDialog(context)),
 
           // Copy row down button

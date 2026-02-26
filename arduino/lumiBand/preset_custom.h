@@ -23,6 +23,7 @@ static int  customRow          = 0;    // current row within the active slot
 static bool customBounceForward = true;
 static unsigned long customRowTick  = 0;  // timestamp of last row advance
 static unsigned long customSlotTick = 0;  // timestamp of last slot advance
+static uint8_t customLastBright = 255;    // brightness at last render (for change detection)
 
 // ── Internal helpers ──────────────────────────────────────────────────────────
 
@@ -65,12 +66,19 @@ void customInit(int count) {
   customBounceForward = true;
   customRowTick       = millis();
   customSlotTick      = millis();
+  customLastBright    = bright;
   strip.setBrightness(255);   // dim() is applied inline by showRow()
   _customShowCurrent();
 }
 
 void customTick() {
   unsigned long now = millis();
+
+  // Redraw immediately when brightness changes — don't wait for the row timer.
+  if (bright != customLastBright) {
+    customLastBright = bright;
+    _customShowCurrent();
+  }
 
   // After 3 minutes: advance to the next effect slot.
   if (now - customSlotTick >= CUSTOM_SLOT_MS) {

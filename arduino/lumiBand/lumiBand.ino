@@ -77,14 +77,27 @@ uint8_t uploadBuf[481];
 int     uploadSlot = -1;
 int     uploadLen  = 0;
 
+// ── Runtime state ─────────────────────────────────────────────────────────────
+// Declared here (before flashLoad/flashSave) so those functions can access them.
+// Also before mode includes so tick functions can read them directly.
+
+Mode    activeMode       = Mode::Classic;
+uint8_t bright           = 255;   // 0–255, master brightness for all modes
+uint8_t savedCustomCount = 1;     // Custom-mode slot count — persisted in flash
+uint8_t solidR = 0, solidG = 0, solidB = 0;  // last received RGB (stored for future use)
+
 // ── Flash persistence ─────────────────────────────────────────────────────────
 
-#define FLASH_MAGIC  0x4C551E01UL
+#define FLASH_MAGIC  0x4C551E02UL   // bumped when struct layout changed
 
 struct __attribute__((packed)) FlashStore {
   uint32_t magic;
   Effect   effects[NUM_EFFECTS];
-  uint8_t  loaded[NUM_EFFECTS];
+  uint8_t  loaded[NUM_EFFECTS];   // 8 bytes
+  uint8_t  savedBright;           // master brightness (0–255)
+  uint8_t  savedMode;             // Mode enum value (0–5)
+  uint8_t  savedCustomSlots;      // slots to cycle in Custom mode (1–NUM_EFFECTS)
+  uint8_t  _pad;                  // keeps total size 4-byte aligned
 };
 
 static_assert(sizeof(FlashStore) % 4 == 0,
@@ -106,14 +119,18 @@ void flashLoad() {
   flash.deinit();
 
   if (store.magic != FLASH_MAGIC) {
-    Serial.println("Flash: no valid data");
+    Serial.println("Flash: no valid data — using defaults");
     return;
   }
   for (int i = 0; i < NUM_EFFECTS; i++) {
     effects[i]      = store.effects[i];
     effectLoaded[i] = store.loaded[i];
   }
-  Serial.println("Flash: effects restored");
+  bright           = store.savedBright;
+  activeMode       = (Mode)constrain((int)store.savedMode, 0, 5);
+  savedCustomCount = constrain((int)store.savedCustomSlots, 1, NUM_EFFECTS);
+  Serial.print("Flash: restored — mode="); Serial.print((int)activeMode);
+  Serial.print(" bright=");               Serial.println(bright);
 }
 
 void flashSave() {
@@ -127,6 +144,10 @@ void flashSave() {
     store.effects[i] = effects[i];
     store.loaded[i]  = effectLoaded[i];
   }
+  store.savedBright       = bright;
+  store.savedMode         = (uint8_t)activeMode;
+  store.savedCustomSlots  = (uint8_t)savedCustomCount;
+  store._pad              = 0;
 
   int err = flash.erase(addr, sector);
   if (err != 0) {
@@ -139,14 +160,6 @@ void flashSave() {
   if (err != 0) { Serial.print("Flash program error: "); Serial.println(err); }
   else           { Serial.println("Flash: saved"); }
 }
-
-// ── Runtime state ─────────────────────────────────────────────────────────────
-// `bright` declared before mode includes so tick functions can read it directly.
-
-Mode activeMode = Mode::Classic;
-
-uint8_t bright = 255;   // 0–255, master brightness for all modes
-uint8_t solidR = 0, solidG = 0, solidB = 0;  // last received RGB (stored for future use)
 
 // ── Core helpers ──────────────────────────────────────────────────────────────
 // Declared before mode includes so all mode files can call them.
@@ -249,8 +262,13 @@ void setup() {
 
   flashLoad();
 
-  // Initialise the default mode before BLE is up.
-  modeInit(activeMode);
+  // Initialise the restored (or default) mode before BLE is up.
+  // Custom needs customInit(count); all others use the generic dispatcher.
+  if (activeMode == Mode::Custom) {
+    customInit(savedCustomCount);
+  } else {
+    modeInit(activeMode);
+  }
 
   if (!BLE.begin()) {
     Serial.println("BLE init failed — halting");
@@ -271,66 +289,76 @@ void setup() {
 }
 
 // ── loop ──────────────────────────────────────────────────────────────────────
+// Non-blocking design: runModeTick() is called every iteration regardless of
+// BLE state, so LEDs keep animating when the phone disconnects.
 
 void loop() {
-  BLEDevice central = BLE.central();
+  BLE.poll();
 
-  if (!central || !central.connected()) return;
+  BLEDevice central   = BLE.central();
+  bool      connected = central && central.connected();
 
-  // Central just connected.
-  digitalWrite(LED_BUILTIN, HIGH);
-  Serial.print("Connected: ");
-  Serial.println(central.address());
-  updateStatus();  // prime STATUS so app can read it immediately
+  static bool wasConnected = false;
 
-  while (central.connected()) {
-    BLE.poll();
+  // ── Connect / disconnect edge detection ───────────────────────────────────
+  if (connected && !wasConnected) {
+    wasConnected = true;
+    digitalWrite(LED_BUILTIN, HIGH);
+    Serial.print("Connected: ");
+    Serial.println(central.address());
+    updateStatus();  // prime STATUS so app can read it immediately
+  } else if (!connected && wasConnected) {
+    wasConnected = false;
+    digitalWrite(LED_BUILTIN, LOW);
+    Serial.println("Disconnected");
+  }
 
-    // ── Colour (stored for future use — does not change the active mode) ───────
+  // ── BLE characteristic writes (only processed while connected) ────────────
+  if (connected) {
+
+    // Colour (stored for future use — does not change the active mode).
     if (colorChar.written()) {
       const uint8_t *d = colorChar.value();
       solidR = d[0]; solidG = d[1]; solidB = d[2];
     }
 
-    // ── Brightness ────────────────────────────────────────────────────────────
-    // All mode tick functions read `bright` directly, so the change is picked
-    // up automatically on the next tick (Classic via setBrightness, the rest
-    // via dim()). No re-init required.
+    // Brightness — all mode tick functions read `bright` directly, so the
+    // change is picked up on the very next tick. No mode re-init required.
     if (brightChar.written()) {
       bright = brightChar.value()[0];
       updateStatus();
+      flashSave();
     }
 
-    // ── Command ───────────────────────────────────────────────────────────────
+    // Command:
+    //   [0x02, modeIndex]      — activate mode 0-4
+    //   [0x02, 5, count]       — activate Custom mode with `count` slots
     if (cmdChar.written()) {
       const uint8_t *d   = cmdChar.value();
       const int      len = cmdChar.valueLength();
 
-      // [0x02, modeIndex]         — activate mode 0-4
-      // [0x02, 5,  count]         — activate Custom mode with `count` slots
       if (d[0] == 0x02) {
         uint8_t idx = d[1];
         if (idx <= 5) {
           activeMode = (Mode)idx;
           if (activeMode == Mode::Custom) {
             int count = (len >= 3) ? (int)d[2] : 1;
+            savedCustomCount = (uint8_t)count;
             customInit(count);
           } else {
             modeInit(activeMode);
           }
           updateStatus();
+          flashSave();
           Serial.print("Mode → "); Serial.println(idx);
         }
       }
     }
 
-    // ── Effect upload ─────────────────────────────────────────────────────────
-    //
-    // Packet types written to fxChar:
-    //   [0x00, slot]        begin upload for slot (resets accumulator)
-    //   [0x01, d0…d18]      append data bytes (up to 19 payload bytes per packet)
-    //   [0x02, slot]        commit → parse + save to flash
-    //
+    // Effect upload:
+    //   [0x00, slot]     — begin upload (resets accumulator)
+    //   [0x01, d0…d18]   — append up to 19 bytes of payload
+    //   [0x02, slot]     — commit → parse + save to flash
     if (fxChar.written()) {
       const uint8_t *d   = fxChar.value();
       const int      len = fxChar.valueLength();
@@ -357,12 +385,8 @@ void loop() {
         uploadLen  = 0;
       }
     }
-
-    // ── Mode tick ─────────────────────────────────────────────────────────────
-    runModeTick();
   }
 
-  // Central disconnected.
-  digitalWrite(LED_BUILTIN, LOW);
-  Serial.println("Disconnected");
+  // ── Mode tick — runs unconditionally, BLE or not ───────────────────────────
+  runModeTick();
 }

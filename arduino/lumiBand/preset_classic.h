@@ -25,6 +25,8 @@
 #define pi                      3.141592653589793f
 #define MIN_LED_LUMA            25
 #define maxMem                  2
+#define AUTO_COLOR_TIMER        262144  // 4,3 m
+#define AUTO_STORY_TIMER        262144
 
 // Global audio / animation state
 bool     gOnBeat        = false;
@@ -50,8 +52,7 @@ float    e9_posMem[maxMem];
 uint16_t e9_bpmMem[maxMem];
 int8_t   e9_dirMem[maxMem];
 unsigned long e9_lastSpin = 0;
-
-const uint8_t gManuColor = 0;  // always 0 = auto-color mode
+static unsigned long classicLastTick = 0;
 
 // Pseudo-random source — replaces PROGMEM lookup table from original sketch
 uint8_t randomSync() {
@@ -307,11 +308,14 @@ void classicInit() {
   hueshift      = 0;
   memset(stars_buffer, 0, sizeof(stars_buffer));
   binkieEffect9_reset();
+  classicLastTick = millis();
 }
 
 void classicTick() {
-  strip.setBrightness(bright);  // master brightness for Classic
   gNOW = millis();
+
+  if (gNOW - classicLastTick < 20) return;   // ~50 fps
+  classicLastTick = gNOW;
 
   // ── Audio sampling ─────────────────────────────────────────────────────────
   uint16_t minA = 1023, maxA = 0;
@@ -347,6 +351,9 @@ void classicTick() {
   gSpin2       += gDirection2 * gPegel_smooth;
 
   // ── Effect dispatch ────────────────────────────────────────────────────────
+  gStoryPtr =  gNOW / AUTO_STORY_TIMER;
+  gColorPtr = (gNOW / AUTO_COLOR_TIMER) % COLOR_COUNT;
+
   gEffect = gStoryPtr % STORY_COUNT;
 
   switch (gEffect) {
@@ -361,5 +368,6 @@ void classicTick() {
     case 8: glitzer();              break;
   }
 
+  strip.setBrightness(bright);  // apply master brightness once, right before output
   strip.show();
 }

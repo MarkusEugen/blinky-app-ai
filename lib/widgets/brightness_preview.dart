@@ -21,33 +21,20 @@ class BrightnessPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     final display = _displayColor;
 
-    return Column(
-      children: [
-        AnimatedContainer(
-          duration: const Duration(milliseconds: 80),
-          height: 120,
-          decoration: BoxDecoration(
-            color: display,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(
-                color: display.withOpacity(0.6 * brightness),
-                blurRadius: 40 * brightness,
-                spreadRadius: 4 * brightness,
-              ),
-            ],
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 80),
+      height: 60,
+      decoration: BoxDecoration(
+        color: display,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: display.withOpacity(0.6 * brightness),
+            blurRadius: 40 * brightness,
+            spreadRadius: 4 * brightness,
           ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          '${(brightness * 100).round()}% brightness',
-          style: TextStyle(
-            fontSize: 13,
-            color: Colors.white.withOpacity(0.55),
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }

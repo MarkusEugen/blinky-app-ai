@@ -46,7 +46,7 @@ class LightingNotifier extends Notifier<LightingState> {
   LightingState build() {
     return const LightingState(
       color: Color(0xFF7C6BFF),
-      brightness: 1.0,
+      brightness: 0.05,
       activeEffect: null,
     );
   }
@@ -56,7 +56,7 @@ class LightingNotifier extends Notifier<LightingState> {
   }
 
   void setBrightness(double value) {
-    state = state.copyWith(brightness: value.clamp(0.1, 1.0));
+    state = state.copyWith(brightness: value.clamp(0.05, 0.25));
   }
 
   /// Sync brightness from a BLE STATUS read — UI update only, no BLE write.

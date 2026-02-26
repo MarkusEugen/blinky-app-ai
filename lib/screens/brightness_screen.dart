@@ -19,7 +19,7 @@ class BrightnessScreen extends ConsumerWidget {
     final primary = Theme.of(context).colorScheme.primary;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 100),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 100),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -34,7 +34,7 @@ class BrightnessScreen extends ConsumerWidget {
                 : 'Connect to a device to control brightness',
             style: Theme.of(context).textTheme.bodySmall,
           ),
-          const SizedBox(height: 36),
+          const SizedBox(height: 16),
 
           // Live preview swatch
           BrightnessPreview(
@@ -42,7 +42,7 @@ class BrightnessScreen extends ConsumerWidget {
             brightness: state.brightness,
           ),
 
-          const SizedBox(height: 40),
+          const SizedBox(height: 20),
 
           // Percentage readout
           Center(
@@ -52,7 +52,7 @@ class BrightnessScreen extends ConsumerWidget {
                   TextSpan(
                     text: '$percent',
                     style: TextStyle(
-                      fontSize: 64,
+                      fontSize: 40,
                       fontWeight: FontWeight.w800,
                       color: isConnected ? primary : primary.withOpacity(0.4),
                       height: 1,
@@ -61,7 +61,7 @@ class BrightnessScreen extends ConsumerWidget {
                   TextSpan(
                     text: '%',
                     style: TextStyle(
-                      fontSize: 28,
+                      fontSize: 20,
                       fontWeight: FontWeight.w600,
                       color: isConnected
                           ? primary.withOpacity(0.7)
@@ -73,9 +73,9 @@ class BrightnessScreen extends ConsumerWidget {
             ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 12),
 
-          // Slider row with icons
+          // Slider row with icons — range 5 %–25 %
           Row(
             children: [
               Icon(
@@ -85,9 +85,9 @@ class BrightnessScreen extends ConsumerWidget {
               ),
               Expanded(
                 child: Slider(
-                  value: state.brightness,
-                  min: 0.1,
-                  max: 1.0,
+                  value: state.brightness.clamp(0.05, 0.25),
+                  min: 0.05,
+                  max: 0.25,
                   // onChanged: UI preview; onChangeEnd: BLE write.
                   onChanged: isConnected ? notifier.setBrightness : null,
                   onChangeEnd: isConnected
@@ -103,13 +103,13 @@ class BrightnessScreen extends ConsumerWidget {
             ],
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 8),
 
           // Quick-set buttons
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              for (final pct in [10, 25, 50, 75, 100])
+              for (final pct in [5, 10, 15, 20, 25])
                 _QuickButton(
                   label: '$pct%',
                   isActive: isConnected && percent == pct,
