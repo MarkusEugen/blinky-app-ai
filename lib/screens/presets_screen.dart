@@ -28,16 +28,13 @@ class PresetsScreen extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Mode',
-                  style: Theme.of(context).textTheme.headlineMedium),
-              const SizedBox(height: 4),
               Text(
                 isConnected
                     ? 'Tap a mode to activate it on your band'
                     : 'Connect to a device to control the mode',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 10),
             ],
           ),
         ),
@@ -47,7 +44,7 @@ class PresetsScreen extends ConsumerWidget {
           child: ListView.separated(
             padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
             itemCount: kModes.length,
-            separatorBuilder: (_, __) => const SizedBox(height: 10),
+            separatorBuilder: (_, __) => const SizedBox(height: 6),
             itemBuilder: (context, i) {
               final mode = kModes[i];
               // Custom Effects row is always enabled so the user can always
@@ -113,11 +110,11 @@ class _ModeCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(16),
           splashColor: primary.withOpacity(0.1),
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             child: Row(
               children: [
                 // Icon
-                Text(mode.icon, style: const TextStyle(fontSize: 32)),
+                Text(mode.icon, style: const TextStyle(fontSize: 26)),
                 const SizedBox(width: 16),
 
                 // Name + description
@@ -143,7 +140,7 @@ class _ModeCard extends StatelessWidget {
                           color: Colors.white.withOpacity(0.45),
                         ),
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 4),
                       _ColorSwatches(colors: mode.colors),
                     ],
                   ),
@@ -189,12 +186,12 @@ class _ColorSwatches extends StatelessWidget {
     return Row(
       children: colors.map((c) {
         return Container(
-          width: 18,
-          height: 10,
+          width: 16,
+          height: 8,
           margin: const EdgeInsets.only(right: 4),
           decoration: BoxDecoration(
             color: c,
-            borderRadius: BorderRadius.circular(4),
+            borderRadius: BorderRadius.circular(3),
           ),
         );
       }).toList(),

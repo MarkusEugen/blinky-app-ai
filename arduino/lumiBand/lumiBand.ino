@@ -87,6 +87,13 @@ uint8_t bright           = 255;   // 0–255, master brightness for all modes
 uint8_t savedCustomCount = 1;     // Custom-mode slot count — persisted in flash
 uint8_t solidR = 0, solidG = 0, solidB = 0;  // last received RGB (stored for future use)
 
+// ── BLE power management ──────────────────────────────────────────────────────
+
+#define BLE_SLEEP_MS  (5UL * 60 * 1000)  // stop advertising after 5 min if never connected
+
+bool          bleSleeping        = false;
+unsigned long bleAdvertiseStartMs = 0;
+
 // ── Flash persistence ─────────────────────────────────────────────────────────
 
 #define FLASH_MAGIC  0x4C551E03UL   // bumped when struct layout changed
@@ -303,7 +310,13 @@ void setup() {
   svc.addCharacteristic(fxChar);
   svc.addCharacteristic(statusChar);
   BLE.addService(svc);
+
+  // Power-saving settings (must be set before advertise()).
+  BLE.setAdvertisingInterval(800);     // ~500 ms interval (default ~100 ms)
+  BLE.setConnectionInterval(80, 160);  // 100–200 ms connection interval
+
   BLE.advertise();
+  bleAdvertiseStartMs = millis();
 
   Serial.print("Advertising as: ");
   Serial.println(deviceName);
@@ -314,7 +327,7 @@ void setup() {
 // BLE state, so LEDs keep animating when the phone disconnects.
 
 void loop() {
-  BLE.poll();
+  if (!bleSleeping) BLE.poll();
 
   BLEDevice central   = BLE.central();
   bool      connected = central && central.connected();
@@ -324,6 +337,7 @@ void loop() {
   // ── Connect / disconnect edge detection ───────────────────────────────────
   if (connected && !wasConnected) {
     wasConnected = true;
+    bleSleeping  = false;            // wake BLE if a connection arrives anyway
     digitalWrite(LED_BUILTIN, HIGH);
     Serial.print("Connected: ");
     Serial.println(central.address());
@@ -331,7 +345,17 @@ void loop() {
   } else if (!connected && wasConnected) {
     wasConnected = false;
     digitalWrite(LED_BUILTIN, LOW);
-    Serial.println("Disconnected");
+    Serial.println("Disconnected — resuming advertising");
+    BLE.advertise();
+    bleAdvertiseStartMs = millis();  // reset sleep timer after each session
+  }
+
+  // ── BLE sleep after 5 min with no connection ──────────────────────────────
+  if (!bleSleeping && !connected &&
+      millis() - bleAdvertiseStartMs >= BLE_SLEEP_MS) {
+    BLE.stopAdvertise();
+    bleSleeping = true;
+    Serial.println("BLE: no connection — radio sleeping (power cycle to wake)");
   }
 
   // ── BLE characteristic writes (only processed while connected) ────────────

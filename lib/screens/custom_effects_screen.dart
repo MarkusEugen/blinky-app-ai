@@ -136,12 +136,6 @@ class _TopSection extends ConsumerWidget {
           if (editing == null) ...[
             Padding(
               padding: const EdgeInsets.only(left: 8),
-              child: Text('Custom Effects',
-                  style: Theme.of(context).textTheme.headlineMedium),
-            ),
-            const SizedBox(height: 4),
-            Padding(
-              padding: const EdgeInsets.only(left: 8),
               child: Text(
                 'Select effects to upload to the band',
                 style: Theme.of(context).textTheme.bodySmall,

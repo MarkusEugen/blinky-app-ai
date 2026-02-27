@@ -24,11 +24,6 @@ class BrightnessScreen extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Brightness',
-            style: Theme.of(context).textTheme.headlineMedium,
-          ),
-          const SizedBox(height: 4),
-          Text(
             isConnected
                 ? 'Drag the slider to adjust intensity'
                 : 'Connect to a device to control brightness',

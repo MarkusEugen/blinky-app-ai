@@ -40,7 +40,6 @@ class ConnectionStatusBar extends ConsumerWidget {
         child: isConnected
             ? _ConnectedBar(
                 key: const ValueKey('connected'),
-                deviceName: connected.name,
                 modeLabel: modeLabel,
               )
             : const _DisconnectedBar(key: ValueKey('disconnected')),
@@ -50,12 +49,10 @@ class ConnectionStatusBar extends ConsumerWidget {
 }
 
 class _ConnectedBar extends StatelessWidget {
-  final String deviceName;
   final String modeLabel;
 
   const _ConnectedBar({
     super.key,
-    required this.deviceName,
     required this.modeLabel,
   });
 
@@ -72,9 +69,9 @@ class _ConnectedBar extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 8),
-        Text(
-          'Connected · $deviceName',
-          style: const TextStyle(
+        const Text(
+          'Connected',
+          style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
             color: Colors.white,
@@ -87,11 +84,14 @@ class _ConnectedBar extends StatelessWidget {
           color: Colors.white.withOpacity(0.5),
         ),
         const SizedBox(width: 4),
-        Text(
-          modeLabel,
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.white.withOpacity(0.6),
+        Flexible(
+          child: Text(
+            modeLabel,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 12,
+              color: Colors.white.withOpacity(0.6),
+            ),
           ),
         ),
       ],

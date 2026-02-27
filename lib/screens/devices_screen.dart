@@ -21,9 +21,6 @@ class DevicesScreen extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text('Devices',
-                    style: Theme.of(context).textTheme.headlineMedium),
-                const SizedBox(height: 4),
                 Text(
                   'Manage and connect LumiBand devices',
                   style: Theme.of(context).textTheme.bodySmall,
