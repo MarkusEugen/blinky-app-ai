@@ -80,9 +80,9 @@ class BrightnessScreen extends ConsumerWidget {
               ),
               Expanded(
                 child: Slider(
-                  value: state.brightness.clamp(0.05, 0.25),
-                  min: 0.05,
-                  max: 0.25,
+                  value: state.brightness.clamp(0.20, 1.0),
+                  min: 0.20,
+                  max: 1.0,
                   // onChanged: UI preview; onChangeEnd: BLE write.
                   onChanged: isConnected ? notifier.setBrightness : null,
                   onChangeEnd: isConnected
@@ -104,7 +104,7 @@ class BrightnessScreen extends ConsumerWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
-              for (final pct in [5, 10, 15, 20, 25])
+              for (final pct in [20, 40, 60, 80, 100])
                 _QuickButton(
                   label: '$pct%',
                   isActive: isConnected && percent == pct,

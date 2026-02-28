@@ -62,10 +62,10 @@ BLECharacteristic   statusChar(STATUS_UUID, BLERead | BLENotify, 2);
 // ── Custom effect storage ─────────────────────────────────────────────────────
 
 #define NUM_EFFECTS  8
-#define NUM_ROWS     8
+#define NUM_ROWS     15
 
 struct __attribute__((packed)) Effect {
-  uint8_t  rgb[NUM_ROWS][NUM_LEDS][3];  // [row][led][R/G/B]  360 bytes
+  uint16_t rgb565[NUM_ROWS][NUM_LEDS];  // [row][led] RGB565  450 bytes
   uint8_t  settings;                    // bits 0-3: SoundMode, bit 4: LoopMode
   uint16_t rowMs;                       // row advance interval in ms (20–1000)
 };
@@ -73,8 +73,8 @@ struct __attribute__((packed)) Effect {
 Effect effects[NUM_EFFECTS];
 bool   effectLoaded[NUM_EFFECTS] = {};
 
-// Upload accumulator (483 bytes: 8×15×4 ARGB + 1 settings + 2 rowMs)
-uint8_t uploadBuf[483];
+// Upload accumulator (453 bytes: 15×15×2 RGB565 + 1 settings + 2 rowMs)
+uint8_t uploadBuf[453];
 int     uploadSlot = -1;
 int     uploadLen  = 0;
 
@@ -96,7 +96,7 @@ unsigned long bleAdvertiseStartMs = 0;
 
 // ── Flash persistence ─────────────────────────────────────────────────────────
 
-#define FLASH_MAGIC  0x4C551E03UL   // bumped when struct layout changed
+#define FLASH_MAGIC  0x4C551E04UL   // bumped: RGB565 + 15 rows
 
 struct __attribute__((packed)) FlashStore {
   uint32_t magic;
@@ -183,11 +183,16 @@ void showSolid(uint8_t r, uint8_t g, uint8_t b) {
   strip.show();
 }
 
-// showRow: renders one row of an uploaded effect, applying master brightness.
+// showRow: renders one row of an uploaded effect, unpacking RGB565 and
+// applying master brightness.
 void showRow(int slot, int row) {
-  const uint8_t (*rgb)[3] = effects[slot].rgb[row];
-  for (int i = 0; i < NUM_LEDS; i++)
-    strip.setPixelColor(i, dim(rgb[i][0]), dim(rgb[i][1]), dim(rgb[i][2]));
+  for (int i = 0; i < NUM_LEDS; i++) {
+    uint16_t c = effects[slot].rgb565[row][i];
+    uint8_t r5 = (c >> 11) & 0x1F;
+    uint8_t g5 = (c >> 5)  & 0x1F;
+    uint8_t b5 =  c        & 0x1F;
+    strip.setPixelColor(i, dim(r5 * 8), dim(g5 * 8), dim(b5 * 8));
+  }
   strip.show();
 }
 
@@ -243,24 +248,21 @@ void updateStatus() {
 
 // ── Effect upload helpers ─────────────────────────────────────────────────────
 
-// Parse the 483-byte ARGB+settings+rowMs buffer into the Effect struct, then persist.
-// Flutter Color.value layout: 0xAARRGGBB (big-endian stream).
-// bytes   0–479  8 rows × 15 LEDs × 4-byte big-endian ARGB
-// byte  480      settings bitmask
-// bytes 481–482  rowMs big-endian uint16 (20–1000 ms)
+// Parse the 453-byte RGB565+settings+rowMs buffer into the Effect struct, then persist.
+// bytes   0–449  15 rows × 15 LEDs × 2-byte big-endian RGB565
+// byte  450      settings bitmask
+// bytes 451–452  rowMs big-endian uint16 (20–1000 ms)
 void commitUpload(int slot) {
   Effect &e = effects[slot];
   int idx = 0;
   for (int row = 0; row < NUM_ROWS; row++) {
     for (int led = 0; led < NUM_LEDS; led++) {
-      e.rgb[row][led][0] = uploadBuf[idx + 1]; // R
-      e.rgb[row][led][1] = uploadBuf[idx + 2]; // G
-      e.rgb[row][led][2] = uploadBuf[idx + 3]; // B
-      idx += 4;
+      e.rgb565[row][led] = ((uint16_t)uploadBuf[idx] << 8) | uploadBuf[idx + 1];
+      idx += 2;
     }
   }
-  e.settings = uploadBuf[480];
-  uint16_t ms = ((uint16_t)uploadBuf[481] << 8) | uploadBuf[482];
+  e.settings = uploadBuf[450];
+  uint16_t ms = ((uint16_t)uploadBuf[451] << 8) | uploadBuf[452];
   e.rowMs    = (ms >= 20 && ms <= 1000) ? ms : 500;
   effectLoaded[slot] = true;
   Serial.print("FX committed slot "); Serial.println(slot);
@@ -417,13 +419,13 @@ void loop() {
 
       } else if (d[0] == 0x01 && uploadSlot >= 0) {
         int payloadLen = len - 1;
-        if (uploadLen + payloadLen <= 483) {
+        if (uploadLen + payloadLen <= 453) {
           memcpy(uploadBuf + uploadLen, d + 1, payloadLen);
           uploadLen += payloadLen;
         }
 
       } else if (d[0] == 0x02 && uploadSlot >= 0) {
-        if (uploadLen == 483) {
+        if (uploadLen == 453) {
           commitUpload(uploadSlot);
         } else {
           Serial.print("FX upload size mismatch: "); Serial.println(uploadLen);

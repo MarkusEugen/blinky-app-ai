@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/constants.dart';
 
-const int kEffectRows = 8;
+const int kEffectRows = 15;
 
 enum SoundMode { orgel, flashOnBeat, nextOnBeat, pegel }
 
@@ -86,9 +86,14 @@ class EffectData {
 
   factory EffectData.fromJson(Map<String, dynamic> json) {
     final rawRows = json['rows'] as List;
-    final rows = rawRows
+    var rows = rawRows
         .map((row) => (row as List).map((v) => Color(v as int)).toList())
         .toList();
+
+    // Migrate old 8-row data: pad with black rows up to kEffectRows.
+    while (rows.length < kEffectRows) {
+      rows.add(List.filled(kMaxLed, Colors.black));
+    }
 
     final soundModes = ((json['soundModes'] as List?) ?? [])
         .map((s) => SoundMode.values.firstWhere(

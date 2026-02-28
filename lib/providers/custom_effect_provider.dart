@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,7 +16,7 @@ import 'preset_provider.dart';
 // Sentinel for nullable copyWith fields.
 const _sentinel = Object();
 
-const _kStorageKey = 'custom_effects_v1';
+const _kStorageKey = 'custom_effects_v2';
 const _kUploadedKeyPrefix = 'uploaded_effect_ids_v1_'; // + device BLE ID
 
 class CustomEffectState {
@@ -121,131 +122,123 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
   static Color _hsv(double h, double s, double v) =>
       HSVColor.fromAHSV(1.0, h % 360, s, v).toColor();
 
-  static List<Color> _grad(Color a, Color b) =>
-      List.generate(kMaxLed, (i) => Color.lerp(a, b, i / (kMaxLed - 1))!);
-
-  static List<Color> _solid(Color c) => List.filled(kMaxLed, c);
-
   // ── Default effect patterns ────────────────────────────────────────────────
+  // Each generator produces a true 2D 15×15 matrix where every pixel's colour
+  // depends on both its row and column position.
 
-  /// Full hue rainbow rotating 45° per row → spinning rainbow ring animation.
+  /// Rainbow: diagonal hue sweep — hue shifts across both row and column.
   static EffectData _rainbowEffect() {
     final rows = List.generate(kEffectRows, (r) => List.generate(
       kMaxLed,
-      (i) => _hsv(r * 45.0 + i * (300.0 / (kMaxLed - 1)), 1.0, 1.0),
+      (i) => _hsv(r * 24.0 + i * 20.0, 1.0, 1.0),
     ));
     return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.loop, rowMs: 100);
   }
 
-  /// Fire palette: deep red → orange → yellow, bouncing.
+  /// Fire: 2D flame field — hue 0–50, brightness varies with sine waves.
   static EffectData _fireEffect() {
-    final cols = [
-      [_hsv(0, 1.0, 0.8),  _hsv(15, 1.0, 1.0)],
-      [_hsv(15, 1.0, 1.0), _hsv(30, 1.0, 1.0)],
-      [_hsv(30, 1.0, 1.0), _hsv(50, 1.0, 1.0)],
-      [_hsv(50, 1.0, 1.0), _hsv(30, 1.0, 0.9)],
-      [_hsv(30, 1.0, 0.9), _hsv(10, 1.0, 1.0)],
-      [_hsv(10, 1.0, 1.0), _hsv(0,  1.0, 0.7)],
-      [_hsv(5,  1.0, 0.9), _hsv(40, 1.0, 1.0)],
-      [_hsv(40, 1.0, 1.0), _hsv(5,  1.0, 0.8)],
-    ];
-    final rows = cols.map((c) => _grad(c[0], c[1])).toList();
+    final rows = List.generate(kEffectRows, (r) {
+      final rn = r / (kEffectRows - 1);  // 0..1
+      return List.generate(kMaxLed, (i) {
+        final cn = i / (kMaxLed - 1);    // 0..1
+        final hue = 50.0 * rn * (0.5 + 0.5 * sin(cn * pi * 3));
+        final val = 0.6 + 0.4 * sin(rn * pi * 2 + cn * pi);
+        final sat = 0.85 + 0.15 * cos(cn * pi * 2 + rn * pi);
+        return _hsv(hue, sat.clamp(0.0, 1.0), val.clamp(0.0, 1.0));
+      });
+    });
     return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.bounce, rowMs: 80);
   }
 
-  /// Ocean: alternating blue↔cyan gradient sweeps.
+  /// Ocean: 2D wave — hue oscillates between 165–215 with sine ripples.
   static EffectData _oceanEffect() {
-    final pairs = [
-      [_hsv(200, 1.0, 0.9), _hsv(175, 0.8, 1.0)],
-      [_hsv(175, 0.8, 1.0), _hsv(210, 1.0, 0.6)],
-      [_hsv(195, 0.9, 1.0), _hsv(165, 0.7, 0.9)],
-      [_hsv(165, 0.7, 0.9), _hsv(215, 1.0, 1.0)],
-      [_hsv(215, 1.0, 1.0), _hsv(185, 0.9, 1.0)],
-      [_hsv(185, 0.9, 1.0), _hsv(200, 1.0, 0.7)],
-      [_hsv(200, 0.7, 0.7), _hsv(175, 1.0, 1.0)],
-      [_hsv(175, 1.0, 1.0), _hsv(200, 1.0, 0.9)],
-    ];
-    final rows = pairs.map((p) => _grad(p[0], p[1])).toList();
+    final rows = List.generate(kEffectRows, (r) {
+      final rn = r / (kEffectRows - 1);
+      return List.generate(kMaxLed, (i) {
+        final cn = i / (kMaxLed - 1);
+        final wave = sin(rn * pi * 3 + cn * pi * 2);
+        final hue = 190.0 + 25.0 * wave;
+        final sat = 0.7 + 0.3 * cos(cn * pi * 2 - rn * pi);
+        final val = 0.6 + 0.4 * sin(rn * pi + cn * pi * 3);
+        return _hsv(hue, sat.clamp(0.0, 1.0), val.clamp(0.0, 1.0));
+      });
+    });
     return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.loop, rowMs: 180);
   }
 
-  /// Candy: solid bright stripes cycling through vivid hues.
+  /// Candy: 2D diagonal stripes of vivid hues with per-pixel variation.
   static EffectData _candyEffect() {
-    final palette = [
-      _hsv(330, 1.0, 1.0), // hot pink
-      _hsv(180, 1.0, 1.0), // cyan
-      _hsv(300, 1.0, 1.0), // magenta
-      _hsv(90,  1.0, 1.0), // lime
-      _hsv(15,  1.0, 1.0), // orange
-      _hsv(270, 1.0, 1.0), // violet
-      _hsv(55,  1.0, 1.0), // yellow
-      _hsv(210, 1.0, 1.0), // sky blue
-    ];
-    final rows = palette.map(_solid).toList();
+    const hues = [330.0, 180.0, 300.0, 90.0, 15.0, 270.0, 55.0, 210.0,
+                  0.0, 150.0, 45.0, 240.0, 350.0, 120.0, 195.0];
+    final rows = List.generate(kEffectRows, (r) => List.generate(
+      kMaxLed,
+      (i) {
+        final idx = (r + i) % hues.length;
+        final sat = 0.85 + 0.15 * sin(i * pi / (kMaxLed - 1));
+        return _hsv(hues[idx], sat, 1.0);
+      },
+    ));
     return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.loop, rowMs: 150);
   }
 
-  /// Sunset: warm hues shifting from scarlet through orange to violet.
+  /// Sunset: 2D warm colour field — scarlet through orange fading to violet.
   static EffectData _sunsetEffect() {
-    final pairs = [
-      [_hsv(0,   1.0, 1.0), _hsv(20,  1.0, 1.0)],
-      [_hsv(20,  1.0, 1.0), _hsv(40,  1.0, 0.9)],
-      [_hsv(40,  1.0, 0.9), _hsv(20,  0.9, 1.0)],
-      [_hsv(15,  1.0, 1.0), _hsv(300, 0.8, 0.8)],
-      [_hsv(300, 0.8, 0.8), _hsv(270, 1.0, 0.7)],
-      [_hsv(270, 1.0, 0.7), _hsv(10,  1.0, 0.9)],
-      [_hsv(10,  1.0, 0.9), _hsv(35,  1.0, 1.0)],
-      [_hsv(35,  1.0, 1.0), _hsv(0,   1.0, 1.0)],
-    ];
-    final rows = pairs.map((p) => _grad(p[0], p[1])).toList();
+    final rows = List.generate(kEffectRows, (r) {
+      final rn = r / (kEffectRows - 1);
+      return List.generate(kMaxLed, (i) {
+        final cn = i / (kMaxLed - 1);
+        // Hue sweeps 0–40 across columns, dips into purple at high rows
+        final hue = (40.0 * cn + 320.0 * rn * rn) % 360;
+        final sat = 0.8 + 0.2 * sin(cn * pi + rn * pi);
+        final val = 0.7 + 0.3 * cos(rn * pi * 0.5 + cn * pi * 2);
+        return _hsv(hue, sat.clamp(0.0, 1.0), val.clamp(0.0, 1.0));
+      });
+    });
     return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.bounce, rowMs: 220);
   }
 
-  /// Forest: deep greens to bright lime with golden accents.
+  /// Forest: 2D canopy — green hues with dappled light brightness.
   static EffectData _forestEffect() {
-    final pairs = [
-      [_hsv(130, 1.0, 0.5), _hsv(100, 0.9, 1.0)],
-      [_hsv(100, 0.9, 1.0), _hsv(140, 1.0, 0.4)],
-      [_hsv(140, 1.0, 0.4), _hsv(80,  1.0, 0.9)],
-      [_hsv(80,  1.0, 0.9), _hsv(120, 0.8, 0.7)],
-      [_hsv(120, 0.8, 0.7), _hsv(90,  1.0, 1.0)],
-      [_hsv(90,  1.0, 1.0), _hsv(55,  1.0, 0.9)],
-      [_hsv(55,  1.0, 0.9), _hsv(120, 1.0, 0.5)],
-      [_hsv(120, 1.0, 0.5), _hsv(100, 0.9, 1.0)],
-    ];
-    final rows = pairs.map((p) => _grad(p[0], p[1])).toList();
+    final rows = List.generate(kEffectRows, (r) {
+      final rn = r / (kEffectRows - 1);
+      return List.generate(kMaxLed, (i) {
+        final cn = i / (kMaxLed - 1);
+        final hue = 80.0 + 60.0 * sin(rn * pi * 2 + cn * pi);
+        final sat = 0.7 + 0.3 * cos(cn * pi * 3 + rn * pi * 1.5);
+        final val = 0.4 + 0.6 * (0.5 + 0.5 * sin(rn * pi * 3 + cn * pi * 4));
+        return _hsv(hue, sat.clamp(0.0, 1.0), val.clamp(0.0, 1.0));
+      });
+    });
     return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.loop, rowMs: 200);
   }
 
-  /// Cosmic: deep violet through indigo and pink with bright flashes.
+  /// Cosmic: 2D nebula — violet/indigo/pink with swirling brightness.
   static EffectData _cosmicEffect() {
-    final pairs = [
-      [_hsv(270, 1.0, 0.9), _hsv(300, 0.8, 1.0)],
-      [_hsv(300, 0.8, 1.0), _hsv(240, 1.0, 0.6)],
-      [_hsv(240, 1.0, 0.6), _hsv(280, 0.6, 1.0)],
-      [_hsv(280, 0.6, 1.0), _hsv(320, 1.0, 0.9)],
-      [_hsv(320, 1.0, 0.9), _hsv(260, 1.0, 0.7)],
-      [_hsv(260, 1.0, 0.7), _hsv(290, 0.5, 1.0)],
-      [_hsv(290, 0.5, 1.0), _hsv(250, 1.0, 0.9)],
-      [_hsv(250, 1.0, 0.9), _hsv(310, 0.9, 1.0)],
-    ];
-    final rows = pairs.map((p) => _grad(p[0], p[1])).toList();
+    final rows = List.generate(kEffectRows, (r) {
+      final rn = r / (kEffectRows - 1);
+      return List.generate(kMaxLed, (i) {
+        final cn = i / (kMaxLed - 1);
+        final hue = 250.0 + 70.0 * sin(rn * pi * 2 + cn * pi * 1.5);
+        final sat = 0.5 + 0.5 * cos(cn * pi * 2 + rn * pi * 3);
+        final val = 0.6 + 0.4 * sin(rn * pi * 1.5 + cn * pi * 2.5);
+        return _hsv(hue, sat.clamp(0.0, 1.0), val.clamp(0.0, 1.0));
+      });
+    });
     return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.bounce, rowMs: 160);
   }
 
-  /// Ice: arctic whites fading into deep arctic blue.
+  /// Ice: 2D crystalline — white to arctic blue with shimmer.
   static EffectData _iceEffect() {
-    final pairs = [
-      [const Color(0xFFFFFFFF), _hsv(195, 0.4, 1.0)],
-      [_hsv(195, 0.4, 1.0),    _hsv(200, 0.8, 0.9)],
-      [_hsv(200, 0.8, 0.9),    _hsv(210, 1.0, 0.7)],
-      [_hsv(210, 1.0, 0.7),    const Color(0xFFFFFFFF)],
-      [const Color(0xFFFFFFFF), _hsv(200, 0.5, 1.0)],
-      [_hsv(200, 0.5, 1.0),    _hsv(205, 0.9, 0.8)],
-      [_hsv(205, 0.9, 0.8),    _hsv(195, 0.3, 1.0)],
-      [_hsv(195, 0.3, 1.0),    const Color(0xFFFFFFFF)],
-    ];
-    final rows = pairs.map((p) => _grad(p[0], p[1])).toList();
+    final rows = List.generate(kEffectRows, (r) {
+      final rn = r / (kEffectRows - 1);
+      return List.generate(kMaxLed, (i) {
+        final cn = i / (kMaxLed - 1);
+        final hue = 195.0 + 15.0 * sin(rn * pi * 2 + cn * pi);
+        final sat = 0.6 * (0.5 + 0.5 * sin(rn * pi * 3 + cn * pi * 2));
+        final val = 0.7 + 0.3 * cos(cn * pi * 2 + rn * pi * 1.5);
+        return _hsv(hue, sat.clamp(0.0, 1.0), val.clamp(0.0, 1.0));
+      });
+    });
     return EffectData(rows: rows, soundModes: const {}, loopMode: LoopMode.bounce, rowMs: 250);
   }
 

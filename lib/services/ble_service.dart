@@ -188,13 +188,13 @@ class BleService {
   //   [0x01, d0..d18]        — append up to 19 bytes of effect data
   //   [0x02, slot]           — commit (Arduino parses and stores)
   //
-  // Total effect payload: 8 rows × 15 LEDs × 4 bytes ARGB + 1 settings + 2 rowMs = 483 bytes
-  // → ceil(483 / 19) = 26 data packets
+  // Total effect payload: 15 rows × 15 LEDs × 2 bytes RGB565 + 1 settings + 2 rowMs = 453 bytes
+  // → ceil(453 / 19) = 24 data packets
 
   Future<void> uploadEffect(int slot, EffectData data) async {
     if (_fxChar == null) return;
 
-    final payload = _serializeEffect(data); // 483 bytes
+    final payload = _serializeEffect(data); // 453 bytes
 
     // 1. Begin
     await _fxChar!.write([0x00, slot], withoutResponse: false);
@@ -211,20 +211,23 @@ class BleService {
     await _fxChar!.write([0x02, slot], withoutResponse: false);
   }
 
-  /// Serialise EffectData → 483 bytes.
+  /// Serialise EffectData → 453 bytes (RGB565).
   ///
   /// Layout:
-  ///   bytes   0–479  8 rows × 15 LEDs × 4 bytes big-endian ARGB (Color.value)
-  ///   byte  480      settings (bits 0-3: SoundMode bitmask, bit 4: LoopMode)
-  ///   bytes 481–482  rowMs big-endian uint16 (row advance interval, 20–1000 ms)
+  ///   bytes   0–449  15 rows × 15 LEDs × 2 bytes big-endian RGB565
+  ///   byte  450      settings (bits 0-3: SoundMode bitmask, bit 4: LoopMode)
+  ///   bytes 451–452  rowMs big-endian uint16 (row advance interval, 20–1000 ms)
   Uint8List _serializeEffect(EffectData data) {
-    final bd = ByteData(483);
+    final bd = ByteData(453);
     int offset = 0;
 
     for (final row in data.rows) {
       for (final color in row) {
-        bd.setUint32(offset, color.value, Endian.big);
-        offset += 4;
+        final r5 = (color.red   >> 3) & 0x1F;
+        final g5 = (color.green >> 3) & 0x1F;
+        final b5 = (color.blue  >> 3) & 0x1F;
+        bd.setUint16(offset, (r5 << 11) | (g5 << 5) | b5, Endian.big);
+        offset += 2;
       }
     }
 
@@ -233,9 +236,9 @@ class BleService {
       settings |= 1 << m.index; // bits 0-3
     }
     if (data.loopMode == LoopMode.bounce) settings |= 0x10; // bit 4
-    bd.setUint8(480, settings);
+    bd.setUint8(450, settings);
 
-    bd.setUint16(481, data.rowMs.clamp(20, 1000), Endian.big);
+    bd.setUint16(451, data.rowMs.clamp(20, 1000), Endian.big);
 
     return bd.buffer.asUint8List();
   }

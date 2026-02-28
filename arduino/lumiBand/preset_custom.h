@@ -70,9 +70,13 @@ static void _customRender() {
   if (settings & SOUND_ORGEL) {
     uint8_t luma = (uint8_t)((255.f - MIN_LED_LUMA) * gRelativePegel + MIN_LED_LUMA);
     for (int i = 0; i < NUM_LEDS; i++) {
-      uint8_t r = (uint16_t)effects[customSlot].rgb[customRow][i][0] * luma / 255;
-      uint8_t g = (uint16_t)effects[customSlot].rgb[customRow][i][1] * luma / 255;
-      uint8_t b = (uint16_t)effects[customSlot].rgb[customRow][i][2] * luma / 255;
+      uint16_t c = effects[customSlot].rgb565[customRow][i];
+      uint8_t r = ((c >> 11) & 0x1F) * 8;
+      uint8_t g = ((c >> 5)  & 0x1F) * 8;
+      uint8_t b = ( c        & 0x1F) * 8;
+      r = (uint16_t)r * luma / 255;
+      g = (uint16_t)g * luma / 255;
+      b = (uint16_t)b * luma / 255;
       strip.setPixelColor(i, dim(r), dim(g), dim(b));
     }
     strip.show();
