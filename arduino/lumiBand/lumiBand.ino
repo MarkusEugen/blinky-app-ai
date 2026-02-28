@@ -327,7 +327,7 @@ void setup() {
 // BLE state, so LEDs keep animating when the phone disconnects.
 
 void loop() {
-  if (!bleSleeping) BLE.poll();
+  BLE.poll();   // must always run — keeps the BLE stack healthy
 
   BLEDevice central   = BLE.central();
   bool      connected = central && central.connected();
@@ -337,7 +337,7 @@ void loop() {
   // ── Connect / disconnect edge detection ───────────────────────────────────
   if (connected && !wasConnected) {
     wasConnected = true;
-    bleSleeping  = false;            // wake BLE if a connection arrives anyway
+    bleSleeping  = false;
     digitalWrite(LED_BUILTIN, HIGH);
     Serial.print("Connected: ");
     Serial.println(central.address());
@@ -351,11 +351,13 @@ void loop() {
   }
 
   // ── BLE sleep after 5 min with no connection ──────────────────────────────
+  // stopAdvertise() is enough to save radio power; BLE.poll() must keep running
+  // so the stack stays healthy and can resume advertising later.
   if (!bleSleeping && !connected &&
       millis() - bleAdvertiseStartMs >= BLE_SLEEP_MS) {
     BLE.stopAdvertise();
     bleSleeping = true;
-    Serial.println("BLE: no connection — radio sleeping (power cycle to wake)");
+    Serial.println("BLE: radio idle (not advertising). Wakes on power cycle.");
   }
 
   // ── BLE characteristic writes (only processed while connected) ────────────
