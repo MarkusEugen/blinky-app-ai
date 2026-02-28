@@ -9,12 +9,14 @@ import '../core/constants.dart';
 import '../models/custom_effect.dart';
 import '../models/effect_data.dart';
 import '../services/ble_service.dart';
+import 'device_provider.dart';
 import 'preset_provider.dart';
 
 // Sentinel for nullable copyWith fields.
 const _sentinel = Object();
 
 const _kStorageKey = 'custom_effects_v1';
+const _kUploadedKeyPrefix = 'uploaded_effect_ids_v1_'; // + device BLE ID
 
 class CustomEffectState {
   final List<CustomEffect> effects;
@@ -75,12 +77,20 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
   Timer? _previewTimer;
   bool _previewForward = true;
 
+  /// Returns the BLE ID of the currently connected device, or null.
+  String? get _connectedDeviceId =>
+      ref.read(deviceProvider).connectedDevice?.id;
+
   @override
   CustomEffectState build() {
     ref.onDispose(() {
       _previewTimer?.cancel();
       _previewTimer = null;
     });
+
+    // Re-evaluate when the connected device changes so uploadedIds
+    // are loaded for the correct Arduino.
+    ref.watch(deviceProvider.select((s) => s.connectedDevice?.id));
 
     // Async load — replaces defaults once storage is read.
     _loadEffects();
@@ -247,7 +257,16 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
       final list = (jsonDecode(raw) as List)
           .map((e) => CustomEffect.fromJson(e as Map<String, dynamic>))
           .toList();
-      state = state.copyWith(effects: list);
+
+      // Restore which effects were last uploaded to THIS specific band.
+      final deviceId = _connectedDeviceId;
+      Set<String> uploaded = const {};
+      if (deviceId != null) {
+        final uploadedRaw = prefs.getStringList('$_kUploadedKeyPrefix$deviceId');
+        if (uploadedRaw != null) uploaded = Set<String>.from(uploadedRaw);
+      }
+
+      state = state.copyWith(effects: list, uploadedIds: uploaded);
     } catch (_) {
       // Corrupt / outdated data — keep defaults.
     }
@@ -259,6 +278,14 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
       _kStorageKey,
       jsonEncode(state.effects.map((e) => e.toJson()).toList()),
     );
+    // Persist uploadedIds scoped to the connected device.
+    final deviceId = _connectedDeviceId;
+    if (deviceId != null) {
+      await prefs.setStringList(
+        '$_kUploadedKeyPrefix$deviceId',
+        state.uploadedIds.toList(),
+      );
+    }
   }
 
   // ── List view ────────────────────────────────────────────────────────────
@@ -314,6 +341,7 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
       uploadedIds: Set<String>.from(state.selectedIds),
       selectedIds: const {},
     );
+    _saveEffects();
   }
 
   // ── Editor upload (quick test) ───────────────────────────────────────────
@@ -342,6 +370,7 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
       uploadedIds: {effect.id},
       selectedIds: const {},
     );
+    _saveEffects();
   }
 
   // ── Editor navigation ────────────────────────────────────────────────────

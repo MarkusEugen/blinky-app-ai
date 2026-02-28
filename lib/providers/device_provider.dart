@@ -142,6 +142,12 @@ class DeviceNotifier extends Notifier<DeviceState> {
     state = state.copyWith(isScanning: true, discoveredDevices: []);
 
     try {
+      // Wait for the Bluetooth adapter to be ready (iOS CoreBluetooth
+      // needs a moment after cold launch before it accepts commands).
+      await FlutterBluePlus.adapterState
+          .where((s) => s == BluetoothAdapterState.on)
+          .first
+          .timeout(const Duration(seconds: 4));
       await ble.startScan(); // filters by service UUID — only LumiBands appear
     } catch (_) {
       state = state.copyWith(isScanning: false);
@@ -199,6 +205,16 @@ class DeviceNotifier extends Notifier<DeviceState> {
     final ble = ref.read(bleServiceProvider);
     final btDevice = _deviceMap[id];
     if (btDevice == null) return;
+
+    // Ensure Bluetooth adapter is ready before connecting.
+    try {
+      await FlutterBluePlus.adapterState
+          .where((s) => s == BluetoothAdapterState.on)
+          .first
+          .timeout(const Duration(seconds: 4));
+    } catch (_) {
+      return;
+    }
 
     // Find the source record (discovered or existing known).
     final source = state.discoveredDevices.where((d) => d.id == id).isNotEmpty
