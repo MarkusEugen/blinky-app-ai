@@ -9,6 +9,7 @@ static unsigned long lavaLastTick = 0;
 void lavaInit() {
   lavaPhase   = 0.f;
   lavaLastTick = millis();
+  strip.setBrightness(255);
 }
 
 void lavaTick() {

@@ -13,7 +13,7 @@ class BrightnessPreview extends StatelessWidget {
   Color get _displayColor {
     final hsl = HSLColor.fromColor(color);
     return hsl
-        .withLightness((hsl.lightness * brightness).clamp(0.0, 1.0))
+        .withLightness((hsl.lightness * brightness * 5.0).clamp(0.0, 1.0))
         .toColor();
   }
 

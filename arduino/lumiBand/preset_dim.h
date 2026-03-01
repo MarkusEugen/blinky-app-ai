@@ -9,6 +9,7 @@ static unsigned long dimLastTick = 0;
 void dimInit() {
   dimPhase   = 0.f;
   dimLastTick = millis();
+  strip.setBrightness(255);
 }
 
 void dimTick() {

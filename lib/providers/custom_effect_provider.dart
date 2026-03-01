@@ -397,6 +397,12 @@ class CustomEffectNotifier extends Notifier<CustomEffectState> {
     _updateData(id, (d) => d.withRowCopiedDown(row));
   }
 
+  /// Replaces the entire EffectData for the given effect.
+  /// Used by the editor's undo/redo system.
+  void restoreData(String id, EffectData data) {
+    _updateData(id, (_) => data);
+  }
+
   void _updateData(String id, EffectData Function(EffectData) fn) {
     state = state.copyWith(
       effects: state.effects.map((e) {

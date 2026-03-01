@@ -439,9 +439,12 @@ void loop() {
   // ── Audio + mode tick — rate-limited to ~50 fps ───────────────────────────
   static unsigned long lastTick = 0;
   unsigned long now = millis();
-  if (now - lastTick >= 20) {
-    lastTick = now;
-    audioTick();    // sample mic, update shared audio globals
-    runModeTick();
+  unsigned long elapsed = now - lastTick;
+  if (elapsed < 20) {
+    delay(20 - elapsed);  // Mbed OS sleep (System ON Low Power) until next tick
+    return;
   }
+  lastTick = millis();
+  audioTick();    // sample mic, update shared audio globals
+  runModeTick();
 }

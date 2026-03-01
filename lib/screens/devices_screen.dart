@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/ble_device.dart';
@@ -91,13 +92,56 @@ class DevicesScreen extends ConsumerWidget {
         else if (!state.isScanning)
           const SliverToBoxAdapter(child: _NearbyHint()),
 
-        // ── Scan button ─────────────────────────────────────────
+        // ── Scan button (disabled when BT is off) ──────────────
         SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-            child: state.isScanning
-                ? _StopScanButton(onTap: notifier.stopScan)
-                : _ScanButton(onTap: notifier.startScan),
+          child: StreamBuilder<BluetoothAdapterState>(
+            stream: FlutterBluePlus.adapterState,
+            initialData: BluetoothAdapterState.unknown,
+            builder: (context, snapshot) {
+              final btOn = snapshot.data == BluetoothAdapterState.on;
+              return Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (!btOn && !state.isScanning) ...[
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.orange.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(
+                              color: Colors.orange.withOpacity(0.3)),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.bluetooth_disabled,
+                                size: 18,
+                                color: Colors.orange.withOpacity(0.8)),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: Text(
+                                'Bluetooth is turned off. Enable it in Settings to scan for devices.',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.orange.withOpacity(0.9),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                    ],
+                    state.isScanning
+                        ? _StopScanButton(onTap: notifier.stopScan)
+                        : _ScanButton(
+                            onTap: btOn ? notifier.startScan : null),
+                  ],
+                ),
+              );
+            },
           ),
         ),
 
@@ -357,7 +401,7 @@ class _DiscoveredDeviceRow extends StatelessWidget {
 // ─── Scan / Stop buttons ───────────────────────────────────────────────────
 
 class _ScanButton extends StatelessWidget {
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   const _ScanButton({required this.onTap});
 
   @override
@@ -372,6 +416,7 @@ class _ScanButton extends StatelessWidget {
           padding: const EdgeInsets.symmetric(vertical: 14),
           shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(14)),
+          disabledBackgroundColor: Colors.white.withOpacity(0.06),
         ),
       ),
     );

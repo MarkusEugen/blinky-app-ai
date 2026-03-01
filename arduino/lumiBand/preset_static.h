@@ -8,6 +8,7 @@ static unsigned long staticLastDraw = 0;
 void staticInit() {
   showSolid(255, 255, 255);   // showSolid applies dim() internally
   staticLastDraw = millis();
+  strip.setBrightness(255);
 }
 
 void staticTick() {

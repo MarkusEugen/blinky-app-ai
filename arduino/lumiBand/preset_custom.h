@@ -124,6 +124,7 @@ void customInit(int count) {
   customSlotTick      = millis();
   customLastBright    = bright;
   _customRender();
+  strip.setBrightness(255);
 }
 
 void customTick() {

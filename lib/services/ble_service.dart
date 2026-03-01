@@ -94,7 +94,7 @@ class BleService {
       }
     });
 
-    await device.connect(autoConnect: false);
+    await device.connect(autoConnect: false, timeout: const Duration(seconds: 5));
 
     // Request a larger MTU so effect chunks can be bigger.
     // nRF52840 (Nano 33 BLE) supports up to 512.

@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/preset.dart';
+import '../providers/custom_effect_provider.dart';
 import '../providers/device_provider.dart';
 import '../providers/preset_provider.dart';
+import '../services/ble_service.dart';
 
 class PresetsScreen extends ConsumerWidget {
-  /// Called when the user taps the Custom Effects row.
+  /// Called when the user taps Custom Effects and no effects have been uploaded.
   final VoidCallback onShowEffects;
 
   const PresetsScreen({super.key, required this.onShowEffects});
@@ -15,9 +17,11 @@ class PresetsScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final modeState = ref.watch(modeProvider);
     final deviceState = ref.watch(deviceProvider);
+    final customState = ref.watch(customEffectProvider);
     final notifier = ref.read(modeProvider.notifier);
 
     final isConnected = deviceState.connectedDevice != null;
+    final hasUploaded = customState.uploadedIds.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -56,7 +60,7 @@ class PresetsScreen extends ConsumerWidget {
                 isEnabled: rowEnabled,
                 onTap: rowEnabled
                     ? (mode.isCustomEffects
-                        ? onShowEffects
+                        ? () => _handleCustomEffects(ref, isConnected, hasUploaded)
                         : () => notifier.activate(mode))
                     : null,
               );
@@ -65,6 +69,18 @@ class PresetsScreen extends ConsumerWidget {
         ),
       ],
     );
+  }
+
+  void _handleCustomEffects(WidgetRef ref, bool isConnected, bool hasUploaded) {
+    if (isConnected && hasUploaded) {
+      // Re-activate custom mode on the band with the previously uploaded effects.
+      final uploadedCount = ref.read(customEffectProvider).uploadedIds.length;
+      ref.read(bleServiceProvider).activateCustomMode(uploadedCount);
+      ref.read(modeProvider.notifier).setCustomEffectsActive();
+    } else {
+      // No effects uploaded yet — navigate to the Effects tab.
+      onShowEffects();
+    }
   }
 }
 

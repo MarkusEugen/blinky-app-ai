@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -129,7 +130,9 @@ class _TopSection extends ConsumerWidget {
           bottom: BorderSide(color: Colors.white.withOpacity(0.08)),
         ),
       ),
-      padding: const EdgeInsets.fromLTRB(12, 16, 20, 16),
+      padding: editing == null
+          ? const EdgeInsets.fromLTRB(12, 16, 20, 12)
+          : const EdgeInsets.fromLTRB(4, 4, 12, 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -141,38 +144,42 @@ class _TopSection extends ConsumerWidget {
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
+            const SizedBox(height: 12),
           ] else ...[
             Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  icon: const Icon(Icons.arrow_back,
+                      color: Colors.white, size: 20),
                   onPressed: notifier.closeEditor,
                   padding: EdgeInsets.zero,
                   constraints:
-                      const BoxConstraints(minWidth: 36, minHeight: 36),
+                      const BoxConstraints(minWidth: 32, minHeight: 32),
                   tooltip: 'Back to list',
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 4),
                 Expanded(
                   child: Text(
                     editing.name,
-                    style: Theme.of(context).textTheme.titleMedium,
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleSmall
+                        ?.copyWith(color: Colors.white),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 GestureDetector(
                   onTap: () => _showRenameDialog(context, editing, notifier),
                   child: Padding(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(6),
                     child: Icon(Icons.edit_outlined,
-                        size: 18,
+                        size: 16,
                         color: Colors.white.withOpacity(0.45)),
                   ),
                 ),
               ],
             ),
           ],
-          const SizedBox(height: 12),
           _LedStrip(colors: ledColors),
         ],
       ),
@@ -479,7 +486,7 @@ class _UploadButton extends StatelessWidget {
 // EDITOR
 // ═══════════════════════════════════════════════════════════════════════════
 
-class _EditorBody extends StatelessWidget {
+class _EditorBody extends StatefulWidget {
   final CustomEffect effect;
   final CustomEffectState state;
   final CustomEffectNotifier notifier;
@@ -493,26 +500,123 @@ class _EditorBody extends StatelessWidget {
   });
 
   @override
+  State<_EditorBody> createState() => _EditorBodyState();
+}
+
+class _EditorBodyState extends State<_EditorBody> {
+  Color _brushColor = const Color(0xFFFF0000);
+  final List<EffectData> _undoStack = [];
+  final List<EffectData> _redoStack = [];
+  final ScrollController _scrollCtrl = ScrollController();
+
+  @override
+  void dispose() {
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  void _pushUndo() {
+    _undoStack.add(widget.effect.data);
+    if (_undoStack.length > 50) _undoStack.removeAt(0);
+    _redoStack.clear();
+    setState(() {});
+  }
+
+  void _undo() {
+    if (_undoStack.isEmpty) return;
+    _redoStack.add(widget.effect.data);
+    final prev = _undoStack.removeLast();
+    widget.notifier.restoreData(widget.effect.id, prev);
+    setState(() {});
+  }
+
+  void _redo() {
+    if (_redoStack.isEmpty) return;
+    _undoStack.add(widget.effect.data);
+    final next = _redoStack.removeLast();
+    widget.notifier.restoreData(widget.effect.id, next);
+    setState(() {});
+  }
+
+  void _pickBrushColor() {
+    showDialog<void>(
+      context: context,
+      builder: (_) => _ColorPickerDialog(
+        initial: _brushColor,
+        onApply: (c) => setState(() => _brushColor = c),
+      ),
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _MatrixGrid(effect: effect, notifier: notifier),
+    return RawScrollbar(
+      controller: _scrollCtrl,
+      thumbVisibility: true,
+      thickness: 4,
+      radius: const Radius.circular(2),
+      thumbColor: Colors.white.withOpacity(0.25),
+      child: SingleChildScrollView(
+        controller: _scrollCtrl,
+        padding: const EdgeInsets.only(bottom: 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Brush color bar + undo/redo ──
+            _BrushBar(
+              brushColor: _brushColor,
+              onPickColor: _pickBrushColor,
+              canUndo: _undoStack.isNotEmpty,
+              canRedo: _redoStack.isNotEmpty,
+              onUndo: _undo,
+              onRedo: _redo,
+            ),
+            const _SectionDivider(),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 2),
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.04),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.08),
+                ),
+              ),
+              child: _CanvasMatrix(
+                effect: widget.effect,
+                notifier: widget.notifier,
+                brushColor: _brushColor,
+                onBeforePaint: _pushUndo,
+              ),
+            ),
+            const _SectionDivider(),
+          _SoundModeSection(
+              effect: widget.effect, notifier: widget.notifier),
           const _SectionDivider(),
-          _SoundModeSection(effect: effect, notifier: notifier),
+          _LoopModeSection(
+              effect: widget.effect, notifier: widget.notifier),
           const _SectionDivider(),
-          _LoopModeSection(effect: effect, notifier: notifier),
-          const _SectionDivider(),
-          _PreviewButton(state: state, notifier: notifier),
-          const _SectionDivider(),
-          _UploadEditorButton(
-            isConnected: isConnected,
-            isUploading: state.isUploading,
-            onUpload: notifier.uploadEditorEffect,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _PreviewButton(
+                      state: widget.state, notifier: widget.notifier),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _UploadEditorButton(
+                    isConnected: widget.isConnected,
+                    isUploading: widget.state.isUploading,
+                    onUpload: widget.notifier.uploadEditorEffect,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
+      ),
       ),
     );
   }
@@ -531,86 +635,171 @@ class _SectionDivider extends StatelessWidget {
   }
 }
 
-// ─── Matrix grid ────────────────────────────────────────────────────────────
+// ─── Brush color bar ────────────────────────────────────────────────────────
 
-class _MatrixGrid extends StatelessWidget {
-  final CustomEffect effect;
-  final CustomEffectNotifier notifier;
+class _BrushBar extends StatelessWidget {
+  final Color brushColor;
+  final VoidCallback onPickColor;
+  final bool canUndo;
+  final bool canRedo;
+  final VoidCallback onUndo;
+  final VoidCallback onRedo;
 
-  const _MatrixGrid({required this.effect, required this.notifier});
+  const _BrushBar({
+    required this.brushColor,
+    required this.onPickColor,
+    required this.canUndo,
+    required this.canRedo,
+    required this.onUndo,
+    required this.onRedo,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        for (int row = 0; row < kEffectRows; row++) ...[
-          if (row > 0) const SizedBox(height: 1),
-          _MatrixRow(
-            effectId: effect.id,
-            rowIndex: row,
-            cells: effect.data.rows[row],
-            notifier: notifier,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: Row(
+        children: [
+          IconButton(
+            icon: Icon(Icons.undo,
+                color: canUndo ? Colors.white : Colors.white24),
+            onPressed: canUndo ? onUndo : null,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            tooltip: 'Undo',
+          ),
+          IconButton(
+            icon: Icon(Icons.redo,
+                color: canRedo ? Colors.white : Colors.white24),
+            onPressed: canRedo ? onRedo : null,
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
+            tooltip: 'Redo',
+          ),
+          const Spacer(),
+          GestureDetector(
+            onTap: onPickColor,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('Brush',
+                    style: TextStyle(
+                        color: Colors.white.withOpacity(0.6), fontSize: 12)),
+                const SizedBox(width: 8),
+                Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: brushColor,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                        color: Colors.white.withOpacity(0.4), width: 1.5),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
-      ],
+      ),
     );
   }
 }
 
-// ─── Matrix row ─────────────────────────────────────────────────────────────
+// ─── Eager pan recognizer (wins gesture arena immediately) ──────────────────
 
-class _MatrixRow extends StatelessWidget {
-  final String effectId;
-  final int rowIndex;
-  final List<Color> cells;
+class _EagerPanRecognizer extends PanGestureRecognizer {
+  @override
+  void addAllowedPointer(PointerDownEvent event) {
+    super.addAllowedPointer(event);
+    resolve(GestureDisposition.accepted);
+  }
+}
+
+// ─── Canvas matrix (drag-to-paint) ──────────────────────────────────────────
+
+class _CanvasMatrix extends StatefulWidget {
+  final CustomEffect effect;
   final CustomEffectNotifier notifier;
+  final Color brushColor;
+  final VoidCallback onBeforePaint;
 
-  const _MatrixRow({
-    required this.effectId,
-    required this.rowIndex,
-    required this.cells,
+  const _CanvasMatrix({
+    required this.effect,
     required this.notifier,
+    required this.brushColor,
+    required this.onBeforePaint,
   });
 
-  Future<void> _showColorPicker(
-    BuildContext context,
-    Color initial,
-    ValueChanged<Color> onPicked,
-  ) async {
-    await showDialog<void>(
+  @override
+  State<_CanvasMatrix> createState() => _CanvasMatrixState();
+}
+
+class _CanvasMatrixState extends State<_CanvasMatrix> {
+  int? _lastPaintedRow;
+  int? _lastPaintedCol;
+
+  static const double _cellHeight = 20.0;
+  static const double _rowGap = 1.0;
+  static const double _rowBtnWidth = 26.0;
+  static const double _hPad = 4.0;
+
+  void _onOverlayPanStart(DragStartDetails details) {
+    _lastPaintedRow = null;
+    _lastPaintedCol = null;
+    widget.onBeforePaint();
+    _paintFromLocal(details.localPosition);
+  }
+
+  void _onOverlayPanUpdate(DragUpdateDetails details) {
+    _paintFromLocal(details.localPosition);
+  }
+
+  /// Convert a local position within the overlay (which covers only the cell
+  /// area) to (row, col) and paint.
+  void _paintFromLocal(Offset local) {
+    final rowHeight = _cellHeight + _rowGap;
+    final row = (local.dy / rowHeight).floor().clamp(0, kEffectRows - 1);
+    // col is determined by the overlay context (set in LayoutBuilder)
+    final col = (local.dx / _overlayWidth * kMaxLed)
+        .floor()
+        .clamp(0, kMaxLed - 1);
+
+    if (row == _lastPaintedRow && col == _lastPaintedCol) return;
+    _lastPaintedRow = row;
+    _lastPaintedCol = col;
+    widget.notifier.setCell(widget.effect.id, row, col, widget.brushColor);
+  }
+
+  // Cached by LayoutBuilder each build.
+  double _overlayWidth = 1;
+
+  void _openFillPicker(int rowIndex) {
+    widget.onBeforePaint();
+    showDialog<void>(
       context: context,
       builder: (_) => _ColorPickerDialog(
-        initial: initial,
-        onApply: onPicked,
+        initial: widget.effect.data.rows[rowIndex].first,
+        onApply: (c) =>
+            widget.notifier.fillRow(widget.effect.id, rowIndex, c),
       ),
     );
   }
 
-  void _openFillPicker(BuildContext context) {
-    _showColorPicker(
-      context,
-      cells.first,
-      (c) => notifier.fillRow(effectId, rowIndex, c),
-    );
-  }
-
-  void _openGradientDialog(BuildContext context) {
+  void _openGradientDialog(int rowIndex) {
+    widget.onBeforePaint();
     showDialog<void>(
       context: context,
       builder: (_) => _GradientDialog(
-        effectId: effectId,
+        effectId: widget.effect.id,
         rowIndex: rowIndex,
-        notifier: notifier,
+        notifier: widget.notifier,
       ),
     );
   }
 
-  void _openCellPicker(BuildContext context, int col) {
-    _showColorPicker(
-      context,
-      cells[col],
-      (c) => notifier.setCell(effectId, rowIndex, col, c),
-    );
+  void _copyRowDown(int rowIndex) {
+    widget.onBeforePaint();
+    widget.notifier.copyRowDown(widget.effect.id, rowIndex);
   }
 
   Widget _rowBtn(IconData icon, Color color, VoidCallback? onTap) {
@@ -618,8 +807,8 @@ class _MatrixRow extends StatelessWidget {
       onTap: onTap,
       behavior: HitTestBehavior.opaque,
       child: SizedBox(
-        width: 26,
-        height: 20,
+        width: _rowBtnWidth,
+        height: _cellHeight,
         child: Icon(icon, size: 15, color: color),
       ),
     );
@@ -627,59 +816,111 @@ class _MatrixRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLastRow = rowIndex == kEffectRows - 1;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Row(
-        children: [
-          // Fill row button
-          _rowBtn(Icons.format_color_fill, const Color(0xFFFF9100),
-              () => _openFillPicker(context)),
+    final gridHeight =
+        kEffectRows * _cellHeight + (kEffectRows - 1) * _rowGap;
 
-          // 15 cell squares — each takes an equal Expanded share
-          Expanded(
-            child: Row(
-              children: List.generate(kMaxLed, (col) {
-                final c = cells[col];
-                final isBlack = c.value == Colors.black.value;
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 0.5),
-                    child: GestureDetector(
-                      onTap: () => _openCellPicker(context, col),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 100),
-                        height: 20,
-                        decoration: BoxDecoration(
-                          color: c,
-                          borderRadius: BorderRadius.circular(3),
-                          border: Border.all(
-                            color: isBlack
-                                ? Colors.white.withOpacity(0.18)
-                                : Colors.transparent,
-                            width: 1,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final totalWidth = constraints.maxWidth;
+        final cellAreaLeft = _hPad + _rowBtnWidth;
+        final cellAreaWidth =
+            totalWidth - cellAreaLeft - _hPad - _rowBtnWidth * 2;
+        _overlayWidth = cellAreaWidth;
+
+        return SizedBox(
+          height: gridHeight,
+          child: Stack(
+            children: [
+              // ── Grid layer (visual + side buttons) ──
+              Column(
+                children: [
+                  for (int row = 0; row < kEffectRows; row++) ...[
+                    if (row > 0) const SizedBox(height: _rowGap),
+                    Padding(
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: _hPad),
+                      child: Row(
+                        children: [
+                          _rowBtn(
+                              Icons.format_color_fill,
+                              const Color(0xFFFF9100),
+                              () => _openFillPicker(row)),
+                          Expanded(
+                            child: Row(
+                              children: List.generate(kMaxLed, (col) {
+                                final c =
+                                    widget.effect.data.rows[row][col];
+                                final isBlack =
+                                    c.value == Colors.black.value;
+                                return Expanded(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 0.5),
+                                    child: Container(
+                                      height: _cellHeight,
+                                      decoration: BoxDecoration(
+                                        color: c,
+                                        borderRadius:
+                                            BorderRadius.circular(3),
+                                        border: Border.all(
+                                          color: isBlack
+                                              ? Colors.white
+                                                  .withOpacity(0.18)
+                                              : Colors.transparent,
+                                          width: 1,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                );
+                              }),
+                            ),
                           ),
-                        ),
+                          _rowBtn(Icons.gradient, const Color(0xFF40C4FF),
+                              () => _openGradientDialog(row)),
+                          _rowBtn(
+                            Icons.south,
+                            row == kEffectRows - 1
+                                ? Colors.white24
+                                : Colors.white54,
+                            row == kEffectRows - 1
+                                ? null
+                                : () => _copyRowDown(row),
+                          ),
+                        ],
                       ),
                     ),
-                  ),
-                );
-              }),
-            ),
-          ),
+                  ],
+                ],
+              ),
 
-          // Gradient button
-          _rowBtn(Icons.gradient, const Color(0xFF40C4FF),
-              () => _openGradientDialog(context)),
-
-          // Copy row down button
-          _rowBtn(
-            Icons.south,
-            isLastRow ? Colors.white24 : Colors.white54,
-            isLastRow ? null : () => notifier.copyRowDown(effectId, rowIndex),
+              // ── Gesture overlay (cells only — blocks scroll) ──
+              Positioned(
+                left: cellAreaLeft,
+                top: 0,
+                width: cellAreaWidth,
+                height: gridHeight,
+                child: RawGestureDetector(
+                  gestures: <Type,
+                      GestureRecognizerFactory<GestureRecognizer>>{
+                    _EagerPanRecognizer:
+                        GestureRecognizerFactoryWithHandlers<
+                            _EagerPanRecognizer>(
+                      _EagerPanRecognizer.new,
+                      (recognizer) {
+                        recognizer
+                          ..onStart = _onOverlayPanStart
+                          ..onUpdate = _onOverlayPanUpdate;
+                      },
+                    ),
+                  },
+                  behavior: HitTestBehavior.opaque,
+                ),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -718,17 +959,20 @@ class _ColorPickerDialogState extends State<_ColorPickerDialog> {
     return AlertDialog(
       backgroundColor: const Color(0xFF1A1A2E),
       contentPadding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-      content: SizedBox(
-        width: 320,
-        child: ColorPicker(
-          key: ValueKey(_pickerKey),
-          pickerColor: _current,
-          onColorChanged: (c) => _current = c,
-          portraitOnly: true,
-          enableAlpha: false,
-          hexInputBar: false,
-          labelTypes: const [],
-          pickerAreaHeightPercent: 0.7,
+      content: ClipRect(
+        child: SizedBox(
+          width: 300,
+          height: 280,
+          child: ColorPicker(
+            key: ValueKey(_pickerKey),
+            pickerColor: _current,
+            onColorChanged: (c) => _current = c,
+            portraitOnly: true,
+            enableAlpha: false,
+            hexInputBar: false,
+            labelTypes: const [],
+            pickerAreaHeightPercent: 0.65,
+          ),
         ),
       ),
       actions: [
@@ -1038,38 +1282,35 @@ class _UploadEditorButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final canUpload = isConnected && !isUploading;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-      child: SizedBox(
-        height: 44,
-        child: FilledButton(
-          onPressed: canUpload ? onUpload : null,
-          style: FilledButton.styleFrom(
-            backgroundColor:
-                canUpload ? const Color(0xFF00695C) : null,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              isUploading
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    )
-                  : const Icon(Icons.upload_rounded,
-                      size: 20, color: Colors.white),
-              const SizedBox(width: 8),
-              Text(
-                isUploading ? 'Uploading…' : 'Upload to Band',
-                style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
+    return SizedBox(
+      height: 44,
+      child: FilledButton(
+        onPressed: canUpload ? onUpload : null,
+        style: FilledButton.styleFrom(
+          backgroundColor:
+              canUpload ? const Color(0xFF00695C) : null,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            isUploading
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white),
+                  )
+                : const Icon(Icons.upload_rounded,
+                    size: 18, color: Colors.white),
+            const SizedBox(width: 6),
+            Text(
+              isUploading ? 'Uploading…' : 'Upload',
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
       ),
     );
@@ -1089,35 +1330,32 @@ class _PreviewButton extends StatelessWidget {
     final primary = Theme.of(context).colorScheme.primary;
     final isPreviewing = state.isPreviewing;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 10),
-      child: SizedBox(
-        height: 44,
-        child: FilledButton(
-          onPressed:
-              isPreviewing ? notifier.stopPreview : notifier.startPreview,
-          style: FilledButton.styleFrom(
-            backgroundColor:
-                isPreviewing ? const Color(0xFFB71C1C) : primary,
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                isPreviewing ? Icons.stop_rounded : Icons.play_arrow_rounded,
-                size: 22,
-                color: Colors.white,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                isPreviewing ? 'Stop Preview' : 'Start Preview',
-                style: const TextStyle(
-                    fontSize: 15, fontWeight: FontWeight.w600),
-              ),
-            ],
-          ),
+    return SizedBox(
+      height: 44,
+      child: FilledButton(
+        onPressed:
+            isPreviewing ? notifier.stopPreview : notifier.startPreview,
+        style: FilledButton.styleFrom(
+          backgroundColor:
+              isPreviewing ? const Color(0xFFB71C1C) : primary,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16)),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isPreviewing ? Icons.stop_rounded : Icons.play_arrow_rounded,
+              size: 20,
+              color: Colors.white,
+            ),
+            const SizedBox(width: 6),
+            Text(
+              isPreviewing ? 'Stop' : 'Preview',
+              style: const TextStyle(
+                  fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ],
         ),
       ),
     );
